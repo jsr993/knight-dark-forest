@@ -19,6 +19,11 @@ const COL_MOSS = '#4d6b3a';        // мох на боках
 const COL_BUSH = '#2f5c34';        // кусты
 const COL_BUSH_LIGHT = '#437a45';  // блики кустов
 const COL_ROOT = '#5a4a35';        // свисающие корешки
+// --- Останки павших рыцарей в пустотах ---
+const COL_BONE = '#d8d2c0';        // кости
+const COL_BONE_DARK = '#a1997f';   // тень костей
+const COL_RUST = '#6b6257';        // проржавевшее железо (шлем, меч)
+const COL_RUST_DARK = '#464038';   // тень железа
 const COL_STONE = '#5f6f7a';       // камень (осталось для платформ)
 const COL_STONE_DARK = '#46535c';  // тень камня
 const COL_WOOD = '#a5673f';        // деревянная платформа
@@ -45,6 +50,7 @@ export class Level {
     this.ghostSpawns = [];
     this.houses = [];       // декоративные домики
     this.bossSpawn = null;  // точка появления босса
+    this.chestSpawns = [];  // сундуки с золотом
 
     // Выход с уровня (дверь замка), заполняется меткой 'E'
     this.exit = null;
@@ -81,6 +87,10 @@ export class Level {
         } else if (ch === 'B') {
           // босс-огр: стоит ногами на полу этой клетки
           this.bossSpawn = { col, row };
+          ch = '.';
+        } else if (ch === 'c') {
+          // сундук с золотом
+          this.chestSpawns.push({ col, row });
           ch = '.';
         } else if (ch === 'H' || ch === 'R') {
           // домик: 'H' жилой (горит свет), 'R' заброшенный.
@@ -128,9 +138,10 @@ export class Level {
     return this.tileAt(col, row) === '=';
   }
 
-  // Лиана / лестница: по ней можно лазить стрелками вверх/вниз
+  // Лиана или деревянная лестница: по ним лазают стрелками вверх/вниз
   isVineAt(col, row) {
-    return this.tileAt(col, row) === '|';
+    const ch = this.tileAt(col, row);
+    return ch === '|' || ch === 'L';
   }
 
   // Пересекается ли прямоугольник героя с лианой
@@ -156,6 +167,103 @@ export class Level {
     const x = Math.round(this.exit.x - camera.x);
     const bottom = Math.round(this.exit.groundY - camera.y);
     drawCampfire(ctx, x, bottom, time);
+  }
+
+  // Останки павшего рыцаря: целый человеческий скелет, лежащий на спине.
+  // Занимает два тайла в ширину (30x14). variant (0..1) выбирает,
+  // что лежит рядом — обломок меча или проломленный щит.
+  drawSkeleton(ctx, x, y, variant) {
+    const B = COL_BONE;
+    const Bd = COL_BONE_DARK;
+
+    // ---------- ЧЕРЕП (сбоку, смотрит вверх) ----------
+    const skx = x + 1;
+    const sky = y + 2;
+    ctx.fillStyle = B;
+    ctx.fillRect(skx + 1, sky, 6, 6);        // черепная коробка
+    ctx.fillRect(skx, sky + 1, 1, 4);        // затылок
+    ctx.fillStyle = COL_HOLE;
+    ctx.fillRect(skx + 2, sky + 2, 2, 2);    // глазница
+    ctx.fillRect(skx + 5, sky + 2, 1, 2);    // вторая, в перспективе
+    ctx.fillRect(skx + 4, sky + 4, 1, 1);    // носовая впадина
+    ctx.fillStyle = Bd;
+    ctx.fillRect(skx + 1, sky + 6, 6, 1);    // челюсть
+    ctx.fillStyle = COL_HOLE;
+    ctx.fillRect(skx + 2, sky + 6, 1, 1);    // щели между зубами
+    ctx.fillRect(skx + 4, sky + 6, 1, 1);
+    // Шейные позвонки
+    ctx.fillStyle = Bd;
+    ctx.fillRect(skx + 7, sky + 3, 2, 2);
+
+    // ---------- ГРУДНАЯ КЛЕТКА ----------
+    const cx = x + 10;
+    const cy = y + 2;
+    ctx.fillStyle = Bd;
+    ctx.fillRect(cx, cy + 4, 9, 1);          // позвоночник
+    ctx.fillStyle = B;
+    // Рёбра дугами вверх и вниз от позвоночника, к низу — короче
+    const ribs = [4, 4, 3, 3, 2];
+    for (let i = 0; i < ribs.length; i++) {
+      const rx = cx + 1 + i * 2;
+      ctx.fillRect(rx, cy + 4 - ribs[i], 1, ribs[i]);       // верхнее ребро
+      ctx.fillRect(rx, cy + 5, 1, ribs[i]);                 // нижнее ребро
+    }
+    // Ключицы и плечи
+    ctx.fillStyle = Bd;
+    ctx.fillRect(cx, cy, 3, 1);
+
+    // ---------- РУКИ ----------
+    ctx.fillStyle = B;
+    // Ближняя рука откинута вверх: плечо, локоть, предплечье, кисть
+    ctx.fillRect(cx + 1, cy - 2, 5, 1);
+    ctx.fillRect(cx + 6, cy - 4, 4, 1);
+    ctx.fillStyle = Bd;
+    ctx.fillRect(cx + 10, cy - 5, 2, 2);     // кисть
+    // Дальняя рука вдоль тела
+    ctx.fillStyle = B;
+    ctx.fillRect(cx + 2, cy + 10, 6, 1);
+    ctx.fillStyle = Bd;
+    ctx.fillRect(cx + 8, cy + 10, 2, 1);
+
+    // ---------- ТАЗ ----------
+    const px = x + 20;
+    ctx.fillStyle = B;
+    ctx.fillRect(px, cy + 2, 3, 5);
+    ctx.fillStyle = COL_HOLE;
+    ctx.fillRect(px + 1, cy + 4, 1, 2);      // тазовое отверстие
+
+    // ---------- НОГИ ----------
+    ctx.fillStyle = B;
+    // Верхняя нога: бедро и голень
+    ctx.fillRect(px + 3, cy + 3, 5, 1);
+    ctx.fillRect(px + 8, cy + 2, 5, 1);
+    ctx.fillStyle = Bd;
+    ctx.fillRect(px + 7, cy + 2, 1, 2);      // колено
+    ctx.fillRect(px + 13, cy + 1, 2, 2);     // ступня
+    // Нижняя нога чуть согнута
+    ctx.fillStyle = B;
+    ctx.fillRect(px + 3, cy + 6, 5, 1);
+    ctx.fillRect(px + 8, cy + 7, 4, 1);
+    ctx.fillStyle = Bd;
+    ctx.fillRect(px + 7, cy + 6, 1, 2);      // колено
+    ctx.fillRect(px + 12, cy + 7, 2, 2);     // ступня
+
+    // ---------- СНАРЯЖЕНИЕ РЯДОМ ----------
+    if (variant > 0.5) {
+      // Меч, воткнутый в землю у изголовья
+      ctx.fillStyle = COL_RUST;
+      ctx.fillRect(x + 7, y + 9, 1, 5);
+      ctx.fillStyle = COL_RUST_DARK;
+      ctx.fillRect(x + 6, y + 10, 3, 1);     // перекрестье
+    } else {
+      // Проломленный щит, брошенный поверх костей
+      ctx.fillStyle = COL_RUST;
+      ctx.fillRect(x + 14, y + 10, 6, 4);
+      ctx.fillStyle = COL_RUST_DARK;
+      ctx.fillRect(x + 14, y + 10, 6, 1);
+      ctx.fillStyle = COL_HOLE;
+      ctx.fillRect(x + 16, y + 11, 2, 2);    // пробоина
+    }
   }
 
   // Тайл земли: почва с комьями и пустотами, сверху трава и кусты,
@@ -185,17 +293,32 @@ export class Level {
       ctx.fillRect(px, py, 2 + Math.floor(rnd(i + 30) * 2), 2);
     }
 
-    // Пустоты-норы внутри земли (в глубине, не у самой кромки)
+    // Пустоты внутри земли (в глубине, не у самой кромки).
+    // В некоторых из них лежат останки павших в бою рыцарей.
     if (!openAbove && rnd(41) > 0.62) {
-      const hw = 3 + Math.floor(rnd(42) * 4);
-      const hh = 2 + Math.floor(rnd(43) * 3);
-      const hx = x + 2 + Math.floor(rnd(44) * (T - hw - 4));
-      const hy = y + 3 + Math.floor(rnd(45) * (T - hh - 5));
-      ctx.fillStyle = COL_HOLE;
-      ctx.fillRect(hx, hy, hw, hh);
-      // светлая нижняя кромка норы — объём
-      ctx.fillStyle = COL_SOIL_LIGHT;
-      ctx.fillRect(hx, hy + hh, hw, 1);
+      if (rnd(46) > 0.85) {
+        // Просторная полость — в ней покоится скелет
+        const hw = 14;
+        const hh = 11;
+        const hx = x + 1;
+        const hy = y + 3;
+        ctx.fillStyle = COL_HOLE;
+        ctx.fillRect(hx, hy, hw, hh);
+        ctx.fillStyle = COL_SOIL_LIGHT;
+        ctx.fillRect(hx, hy + hh, hw, 1);
+        this.drawSkeleton(ctx, hx, hy, rnd(47));
+      } else {
+        // Обычная маленькая нора
+        const hw = 3 + Math.floor(rnd(42) * 4);
+        const hh = 2 + Math.floor(rnd(43) * 3);
+        const hx = x + 2 + Math.floor(rnd(44) * (T - hw - 4));
+        const hy = y + 3 + Math.floor(rnd(45) * (T - hh - 5));
+        ctx.fillStyle = COL_HOLE;
+        ctx.fillRect(hx, hy, hw, hh);
+        // светлая нижняя кромка норы — объём
+        ctx.fillStyle = COL_SOIL_LIGHT;
+        ctx.fillRect(hx, hy + hh, hw, 1);
+      }
     }
 
     // --- Трава на верхней кромке ---
@@ -285,6 +408,19 @@ export class Level {
           ctx.fillStyle = COL_VINE_LEAF;
           ctx.fillRect(x + 2, y + 3, 4, 3);
           ctx.fillRect(x + 10, y + 10, 4, 3);
+        } else if (ch === 'L') {
+          // Деревянная лестница: две тетивы и перекладины
+          ctx.fillStyle = COL_WOOD_DARK;
+          ctx.fillRect(x + 2, y, 3, T);
+          ctx.fillRect(x + 11, y, 3, T);
+          ctx.fillStyle = COL_WOOD;
+          ctx.fillRect(x + 2, y, 2, T);
+          ctx.fillRect(x + 11, y, 2, T);
+          ctx.fillRect(x + 4, y + 3, 7, 2);   // перекладины
+          ctx.fillRect(x + 4, y + 11, 7, 2);
+          ctx.fillStyle = COL_WOOD_DARK;
+          ctx.fillRect(x + 4, y + 5, 7, 1);
+          ctx.fillRect(x + 4, y + 13, 7, 1);
         }
         // Остальные символы (^ | c h ...) пока не рисуем — их этапы впереди
       }

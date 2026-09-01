@@ -42,6 +42,7 @@ export class Player {
     this.riding = null;       // движущаяся платформа, на которой стоим
     // --- Бой ---
     this.hearts = CONFIG.PLAYER_HEARTS; // здоровье
+    this.coins = this.coins || 0; // собранное золото не пропадает при возрождении
     this.attackTimer = 0;     // идёт мах мечом (сек, убывает)
     this.attackCooldown = 0;  // пауза до следующего удара
     this.swingId = 0;         // номер маха (чтобы один мах бил врага один раз)

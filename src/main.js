@@ -13,6 +13,7 @@ import { LEVEL1 } from './levels/level1.js';
 import { Player } from './entities/player.js';
 import { Enemy, Ghost } from './entities/enemies.js';
 import { Boss } from './entities/boss.js';
+import { Chest } from './entities/pickups.js';
 import { MovingPlatform } from './entities/traps.js';
 import { Camera } from './camera.js';
 import { Background } from './background.js';
@@ -58,13 +59,16 @@ const boss = level.bossSpawn
       (level.bossSpawn.row + 1) * CONFIG.TILE - CONFIG.BOSS_H,
     )
   : null;
+// Сундуки из меток 'c' и монеты, которые из них выбиваются
+const chests = level.chestSpawns.map((s) => new Chest(s.col, s.row));
+let coins = [];
 const camera = new Camera(level);
 const background = new Background();
 // Камера сразу смотрит на героя, без "подъезда" в первый кадр
 camera.update(player, 1);
 
 // Доступ к состоянию игры из консоли браузера (для отладки)
-window.__game = { player, camera, level, platforms, enemies, ghosts, boss };
+window.__game = { player, camera, level, platforms, enemies, ghosts, boss, chests, getCoins: () => coins };
 
 // Пересекаются ли два прямоугольника
 function overlaps(a, b) {
@@ -75,6 +79,8 @@ function overlaps(a, b) {
 function resetEnemies() {
   for (const enemy of enemies) enemy.reset();
   for (const ghost of ghosts) ghost.reset();
+  for (const chest of chests) chest.reset();
+  coins = [];
   if (boss) boss.reset();
 }
 
@@ -160,6 +166,10 @@ function update(dt) {
   for (const ghost of ghosts) ghost.update(dt, level, player);
   if (boss) boss.update(dt, level, player);
 
+  for (const chest of chests) chest.update(dt);
+  for (const coin of coins) coin.update(dt, level, player);
+  coins = coins.filter((c) => !c.taken); // подобранные убираем
+
   // Меч задевает врагов (каждый мах бьёт цель не больше одного раза)
   const sword = player.attackHitbox();
   if (sword) {
@@ -170,6 +180,15 @@ function update(dt) {
       if (overlaps(sword, target)) {
         target.lastHitSwing = player.swingId;
         target.hurt(CONFIG.SWORD_DAMAGE, player.x + player.w / 2);
+      }
+    }
+    // Удар по сундуку выбивает монету
+    for (const chest of chests) {
+      if (chest.lastHitSwing === player.swingId) continue;
+      if (overlaps(sword, chest)) {
+        chest.lastHitSwing = player.swingId;
+        const coin = chest.hurt();
+        if (coin) coins.push(coin);
       }
     }
   }
@@ -186,6 +205,8 @@ function render() {
   const now = performance.now();
   level.drawDecor(bctx, camera, now); // домики в лесу
   level.draw(bctx, camera);
+  for (const chest of chests) chest.draw(bctx, camera);
+  for (const coin of coins) coin.draw(bctx, camera);
   for (const plat of platforms) plat.draw(bctx, camera);
   for (const enemy of enemies) enemy.draw(bctx, camera);
   if (boss) boss.draw(bctx, camera);
