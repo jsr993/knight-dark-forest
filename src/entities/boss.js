@@ -7,7 +7,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { drawSprite, OGRE_IDLE, OGRE_WALK_CYCLE } from '../sprites.js';
+import { drawSprite, OGRE_IDLE, OGRE_SMASH, OGRE_WALK_CYCLE } from '../sprites.js';
 
 const T = CONFIG.TILE;
 
@@ -220,11 +220,19 @@ export class Boss {
       frame = step.frame;
       sy += step.dy;
     }
-    // В момент удара огр приседает — вкладывает вес в замах
+    // В момент удара руки идут вниз за молотом, и огр приседает от усилия
     if (this.state === 'smash') {
       const t = 1 - this.stateTimer / CONFIG.BOSS_SMASH_TIME;
-      if (t > 0.45) sy += 2;
+      if (t > 0.4) {
+        frame = OGRE_SMASH;
+        sy += 2;
+      }
     }
+
+    // Пока молот занесён, он проходит ЗА головой — иначе рукоять
+    // перечеркнула бы огру лицо. В момент удара он выносится вперёд.
+    const swing = this.swingProgress();
+    if (swing < 0.4) this.drawHammer(ctx, sx, sy, swing);
 
     if (this.flash > 0) {
       // Вспышка от попадания — белый силуэт
@@ -236,30 +244,35 @@ export class Boss {
       drawSprite(ctx, frame, sx, sy, this.dir < 0);
     }
 
-    this.drawHammer(ctx, sx, sy);
+    if (swing >= 0.4) this.drawHammer(ctx, sx, sy, swing);
+
     this.drawHealthBar(ctx);
+  }
+
+  // Насколько молот опущен: 0 — занесён над головой, 1 — врезался в землю
+  swingProgress() {
+    if (this.state === 'raise') {
+      // Замах: чуть отводит назад
+      const t = 1 - this.stateTimer / CONFIG.BOSS_RAISE_TIME;
+      return -0.25 * Math.min(1, t * 2);
+    }
+    if (this.state === 'smash') {
+      const t = 1 - this.stateTimer / CONFIG.BOSS_SMASH_TIME;
+      return Math.min(1, t / 0.5); // быстро падает вниз и остаётся
+    }
+    if (this.state === 'recover') {
+      // Медленно поднимает обратно
+      return Math.max(0, this.stateTimer / CONFIG.BOSS_RECOVER_TIME);
+    }
+    return 0;
   }
 
   // ---------- МОЛОТ ----------
   // Держится ДВУМЯ РУКАМИ НАД ГОЛОВОЙ и обрушивается сверху вниз.
-  drawHammer(ctx, sx, sy) {
+  drawHammer(ctx, sx, sy, swing) {
     const f = this.dir;
     // Кулаки в спрайте — вверху по бокам; рукоять идёт между ними
     const gripX = sx + SPRITE_W / 2;
-
-    // Угол молота: 0 — над головой, 1 — врезался в землю
-    let swing = 0;
-    if (this.state === 'raise') {
-      // Замах: чуть отводит назад
-      const t = 1 - this.stateTimer / CONFIG.BOSS_RAISE_TIME;
-      swing = -0.25 * Math.min(1, t * 2);
-    } else if (this.state === 'smash') {
-      const t = 1 - this.stateTimer / CONFIG.BOSS_SMASH_TIME;
-      swing = Math.min(1, t / 0.5); // быстро падает вниз и остаётся
-    } else if (this.state === 'recover') {
-      // Медленно поднимает обратно
-      swing = Math.max(0, this.stateTimer / CONFIG.BOSS_RECOVER_TIME);
-    }
 
     // Путь головки молота: из-за головы по широкой дуге вперёд и ВНИЗ, в землю.
     // -90° — молот над головой, +58° — врезался в землю перед собой.
