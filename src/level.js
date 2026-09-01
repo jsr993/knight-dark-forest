@@ -3,7 +3,7 @@
 // ============================================================
 
 import { CONFIG } from './config.js';
-import { drawHouses, drawCampfire } from './decor.js';
+import { drawHouses, drawCampfire, drawColdCampfire } from './decor.js';
 
 const T = CONFIG.TILE;
 
@@ -209,12 +209,14 @@ export class Level {
     drawHouses(ctx, this.houses, camera, time);
   }
 
-  // Костёр в конце уровня (рисуется ПОСЛЕ героя, чтобы пламя грело его спереди)
-  drawExit(ctx, camera, time) {
+  // Костёр в конце уровня (рисуется ПОСЛЕ героя, чтобы пламя грело его спереди).
+  // Пока огр не побеждён, костёр не разожжён — только холодные поленья.
+  drawExit(ctx, camera, time, lit) {
     if (!this.exit) return;
     const x = Math.round(this.exit.x - camera.x);
     const bottom = Math.round(this.exit.groundY - camera.y);
-    drawCampfire(ctx, x, bottom, time);
+    if (lit) drawCampfire(ctx, x, bottom, time);
+    else drawColdCampfire(ctx, x, bottom);
   }
 
   // Останки павшего рыцаря: целый человеческий скелет, лежащий на спине.

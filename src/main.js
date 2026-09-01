@@ -20,8 +20,9 @@ import { Background } from './background.js';
 import { drawHUD } from './hud.js';
 import {
   initAudio, toggleMute, isMuted, toggleMusic, isMusicMuted,
-  playMusic, audioState, Sfx,
+  playMusic, stopMusic, playFanfare, audioState, Sfx,
 } from './audio.js';
+import { drawTextCentered } from './font.js';
 
 const W = CONFIG.SCREEN_W;
 const H = CONFIG.SCREEN_H;
@@ -101,6 +102,14 @@ function resetEnemies() {
 // заново (сюда позже встанет переход на уровень 2).
 let entering = null; // null или { phase, timer }
 let fadeAlpha = 0;   // затемнение экрана (0 — нет, 1 — чёрный)
+let victory = false; // уровень пройден — показываем экран победы
+let victoryTimer = 0;
+let levelTime = 0;   // сколько секунд идёт прохождение
+
+// Огр повержен? Пока нет — костёр не разжечь и отдыхать нельзя
+function bossDefeated() {
+  return !boss || boss.dead;
+}
 
 // ---------- ЗАХОД В ДОМИК ----------
 // Герой входит в дверь, отдыхает внутри и выходит с восстановленным сердцем
@@ -150,29 +159,38 @@ function updateEntering(dt) {
       Sfx.rest();            // спокойная фраза на привале
     }
   } else if (entering.phase === 'rest') {
-    // Сидит и греется
+    // Сидит и греется у огня после победы
     entering.timer -= dt;
-    if (entering.timer <= 0) entering = { phase: 'fade' };
-  } else if (entering.phase === 'fade') {
-    // Экран плавно гаснет...
-    fadeAlpha += dt * 2;
-    if (fadeAlpha >= 1) {
-      fadeAlpha = 1;
-      // ...и мир начинается заново
-      player.respawn();
-      player.hidden = false;
-      player.sitting = false;
-      resetEnemies();
-      camera.update(player, 1);
-      entering = { phase: 'unfade' };
+    if (entering.timer <= 0) {
+      entering = { phase: 'fade' };
+      stopMusic();
+      playFanfare(); // трубят фанфары победы
     }
-  } else if (entering.phase === 'unfade') {
-    // ...и проявляется обратно
-    fadeAlpha -= dt * 2;
-    if (fadeAlpha <= 0) {
-      fadeAlpha = 0;
+  } else if (entering.phase === 'fade') {
+    // Экран плавно гаснет и остаётся тёмным — время для экрана победы
+    fadeAlpha += dt * 1.2;
+    if (fadeAlpha >= 0.82) {
+      fadeAlpha = 0.82;
+      victory = true;
+      victoryTimer = 0;
       entering = null;
     }
+  }
+}
+
+// Экран победы: ждём Enter, чтобы пройти уровень заново
+function updateVictory(dt) {
+  victoryTimer += dt;
+  if (victoryTimer > 1.2 && Input.wasPressed('start')) {
+    victory = false;
+    fadeAlpha = 0;
+    levelTime = 0;
+    player.coins = 0;
+    player.respawn();
+    player.hidden = false;
+    player.sitting = false;
+    resetEnemies();
+    camera.update(player, 1);
   }
 }
 
@@ -204,7 +222,16 @@ function updateAudio(dt) {
 
 // Один шаг игровой логики
 function update(dt) {
+  // На экране победы игра замирает — ждём Enter
+  if (victory) {
+    updateVictory(dt);
+    if (Input.wasPressed('mute')) toggleMute();
+    Input.endFrame();
+    return;
+  }
+
   updateAudio(dt);
+  levelTime += dt;
   for (const plat of platforms) plat.update(dt);
 
   if (entering) {
@@ -240,8 +267,9 @@ function update(dt) {
     resetEnemies();
   }
 
-  // Дошли до костра, стоя на земле, — начинается привал
-  if (level.exit && player.onGround && overlaps(player, level.exit)) {
+  // Дошли до костра — привал начинается ТОЛЬКО если огр повержен.
+  // Пока он жив, костёр холодный и садиться не за что
+  if (level.exit && player.onGround && bossDefeated() && overlaps(player, level.exit)) {
     entering = { phase: 'walk' };
     player.vx = 0;
     player.vy = 0;
@@ -285,6 +313,29 @@ function update(dt) {
   Input.endFrame();
 }
 
+// ---------- ЭКРАН ПОБЕДЫ ----------
+function drawVictoryScreen(ctx) {
+  // «ПОБЕДА!» переливается золотом
+  const shine = 0.7 + 0.3 * Math.sin(victoryTimer * 3);
+  const gold = `rgba(255, 214, 92, ${shine})`;
+
+  drawTextCentered(ctx, 'ПОБЕДА!', W, 38, gold, 3);
+  drawTextCentered(ctx, 'ТЫ ПОБЕДИТЕЛЬ', W, 72, '#e8f1f5', 1);
+  drawTextCentered(ctx, 'ОГР ПОВЕРЖЕН', W, 86, '#a9c2d0', 1);
+
+  // Итоги: собранное золото и время прохождения
+  const minutes = Math.floor(levelTime / 60);
+  const seconds = Math.floor(levelTime % 60);
+  const timeText = `ВРЕМЯ: ${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+  drawTextCentered(ctx, `ЗОЛОТО: ${player.coins}`, W, 110, '#f2c14e', 1);
+  drawTextCentered(ctx, timeText, W, 124, '#f2c14e', 1);
+
+  // Подсказка появляется чуть позже и мигает
+  if (victoryTimer > 1.2 && Math.floor(victoryTimer * 2) % 2 === 0) {
+    drawTextCentered(ctx, 'НАЖМИ ВВОД - ИГРАТЬ СНОВА', W, 152, '#8d99ae', 1);
+  }
+}
+
 // Отрисовка одного кадра в буфер
 function render() {
   // Мрачный лес в несколько слоёв (вместо простого неба)
@@ -299,15 +350,18 @@ function render() {
   for (const enemy of enemies) enemy.draw(bctx, camera);
   if (boss) boss.draw(bctx, camera);
   player.draw(bctx, camera);
-  level.drawExit(bctx, camera, now); // костёр горит перед героем
+  // Костёр разгорается только после победы над огром
+  level.drawExit(bctx, camera, now, bossDefeated());
   for (const ghost of ghosts) ghost.draw(bctx, camera); // призраки — поверх всех
   drawHUD(bctx, player, isMuted(), isMusicMuted());
 
-  // Затемнение при входе в замок
+  // Затемнение (привал у костра и экран победы)
   if (fadeAlpha > 0) {
     bctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
     bctx.fillRect(0, 0, W, H);
   }
+
+  if (victory) drawVictoryScreen(bctx);
 
   // --- Выводим буфер на экран с целочисленным масштабом ---
   const scale = Math.max(1, Math.floor(Math.min(screen.width / W, screen.height / H)));

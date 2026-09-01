@@ -202,6 +202,31 @@ function pixelCircle(ctx, cx, cy, r) {
   }
 }
 
+// Погасший костёр: пока огр не побеждён, здесь только холодные поленья.
+// Он же подсказывает игроку, что отдыхать ещё рано.
+export function drawColdCampfire(ctx, x, bottom) {
+  const cx = x + 16;
+  // Поленья крест-накрест, обугленные
+  ctx.fillStyle = LOG_DARK;
+  ctx.fillRect(cx - 14, bottom - 7, 28, 4);
+  ctx.fillRect(cx - 10, bottom - 11, 20, 3);
+  ctx.fillStyle = '#2a2018';
+  ctx.fillRect(cx - 4, bottom - 11, 8, 3);
+  // Остывший пепел
+  ctx.fillStyle = '#4a4a4a';
+  ctx.fillRect(cx - 8, bottom - 9, 16, 2);
+  // Камни вокруг кострища
+  const stones = [-20, -13, -5, 4, 12, 18];
+  for (let i = 0; i < stones.length; i++) {
+    const sx = cx + stones[i];
+    const sw = 6 + (i % 3);
+    ctx.fillStyle = STONE_DARK;
+    ctx.fillRect(sx, bottom - 5, sw, 5);
+    ctx.fillStyle = '#3a3e44';
+    ctx.fillRect(sx, bottom - 2, sw, 2);
+  }
+}
+
 // x — левый край кострища, bottom — уровень земли
 export function drawCampfire(ctx, x, bottom, time) {
   const cx = x + 16; // центр костра

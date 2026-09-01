@@ -543,3 +543,55 @@ export function stopMusic() {
   stopDrone();
   if (timer) { clearInterval(timer); timer = null; }
 }
+
+// ============================================================
+// ТОРЖЕСТВЕННЫЕ ФАНФАРЫ ПОБЕДЫ.
+// Мажорное трезвучие, взлетающее вверх, — как трубы на турнире.
+// Играет один раз поверх тишины (фоновая музыка перед этим гасится).
+// ============================================================
+export function playFanfare() {
+  if (!wake() || muted) return;
+  stopMusic(); // трубам никто не мешает
+
+  const t0 = ctx.currentTime + 0.05;
+  // Ре-мажор: торжественный ход по трезвучию и разрешение в верхнюю тонику
+  const melody = [
+    [NOTE.D4, 0.0, 0.16], [NOTE.A4, 0.16, 0.16], [NOTE.D5, 0.32, 0.34],
+    [NOTE.A4, 0.7, 0.14], [NOTE.D5, 0.86, 0.5],
+    [NOTE.C5 * 1.122, 1.4, 0.2],   // ми
+    [NOTE.D5, 1.62, 0.75],
+  ];
+  // Вторая труба — квинтой ниже, играет то же самое (средневековый органум)
+  for (const [freq, at, dur] of melody) {
+    fanfareNote(freq, t0 + at, dur, 0.2);
+    fanfareNote(freq / 1.5, t0 + at, dur, 0.13);
+  }
+  // Литавры на сильных долях
+  noise({ time: 0.25, vol: 0.22, filterFrom: 400, filterTo: 60, delay: 0.05 });
+  noise({ time: 0.25, vol: 0.2, filterFrom: 400, filterTo: 60, delay: 0.37 });
+  noise({ time: 0.45, vol: 0.26, filterFrom: 500, filterTo: 60, delay: 0.91 });
+  noise({ time: 0.7, vol: 0.3, filterFrom: 500, filterTo: 60, delay: 1.67 });
+}
+
+// Одна нота фанфары — яркая, с чуть звенящим хвостом
+function fanfareNote(freq, when, dur, vol) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(freq, when);
+
+  const bright = ctx.createBiquadFilter();
+  bright.type = 'lowpass';
+  bright.frequency.value = 3200;
+
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.exponentialRampToValueAtTime(vol, when + 0.02);
+  gain.gain.setValueAtTime(vol, when + dur * 0.7);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+
+  osc.connect(bright);
+  bright.connect(gain);
+  gain.connect(master);
+  osc.start(when);
+  osc.stop(when + dur + 0.05);
+}
