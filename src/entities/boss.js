@@ -7,7 +7,13 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
-import { drawSprite, OGRE_IDLE, OGRE_SMASH, OGRE_WALK_CYCLE } from '../sprites.js';
+import {
+  drawSprite,
+  OGRE_IDLE,
+  OGRE_RAISE,
+  OGRE_SMASH,
+  OGRE_WALK_CYCLE,
+} from '../sprites.js';
 
 const T = CONFIG.TILE;
 
@@ -134,11 +140,10 @@ export class Boss {
     if (overlaps(this, player)) player.hurt(this.x + this.w / 2);
   }
 
-  // Зона удара молота (только в середине фазы smash, когда молот внизу)
+  // Зона удара молота (только когда он уже обрушился вниз)
   hammerHitbox() {
     if (this.state !== 'smash') return null;
-    const t = 1 - this.stateTimer / CONFIG.BOSS_SMASH_TIME;
-    if (t < 0.45) return null; // молот ещё летит вниз
+    if (this.swingProgress() < 1.45) return null; // молот ещё летит вниз
     const reach = CONFIG.BOSS_HAMMER_REACH;
     return {
       x: this.dir > 0 ? this.x + this.w - 4 : this.x - reach + 4,
@@ -220,19 +225,23 @@ export class Boss {
       frame = step.frame;
       sy += step.dy;
     }
-    // В момент удара руки идут вниз за молотом, и огр приседает от усилия
-    if (this.state === 'smash') {
-      const t = 1 - this.stateTimer / CONFIG.BOSS_SMASH_TIME;
-      if (t > 0.4) {
-        frame = OGRE_SMASH;
-        sy += 2;
+    // Тело следует за молотом: занёс — руки вверх, обрушил — руки вниз вперёд
+    const swing = this.swingProgress();
+    if (this.state === 'raise' || (this.state === 'recover' && swing > 1.2)) {
+      if (swing > 0.45) frame = OGRE_RAISE;
+    } else if (this.state === 'smash') {
+      if (swing > 1.4) {
+        frame = OGRE_SMASH; // руки ушли вниз за молотом
+        sy += 2;            // приседает от усилия
+      } else {
+        frame = OGRE_RAISE; // молот ещё вверху
       }
     }
 
-    // Пока молот занесён, он проходит ЗА головой — иначе рукоять
-    // перечеркнула бы огру лицо. В момент удара он выносится вперёд.
-    const swing = this.swingProgress();
-    if (swing < 0.4) this.drawHammer(ctx, sx, sy, swing);
+    // Пока молот за спиной и над головой — рисуем его ЗА огром,
+    // иначе рукоять перечеркнула бы туловище и лицо.
+    // Как только он пошёл рубить вперёд — выносим на передний план.
+    if (swing < 1.15) this.drawHammer(ctx, sx, sy, swing);
 
     if (this.flash > 0) {
       // Вспышка от попадания — белый силуэт
@@ -244,27 +253,30 @@ export class Boss {
       drawSprite(ctx, frame, sx, sy, this.dir < 0);
     }
 
-    if (swing >= 0.4) this.drawHammer(ctx, sx, sy, swing);
+    if (swing >= 1.15) this.drawHammer(ctx, sx, sy, swing);
 
     this.drawHealthBar(ctx);
   }
 
-  // Насколько молот опущен: 0 — занесён над головой, 1 — врезался в землю
+  // Положение молота: 0 — опущен вниз (обычная стойка),
+  // 1 — занесён над головой, 2 — врезался в землю перед собой.
+  // Огр бьёт как рыцарь: снизу поднял -> обрушил.
   swingProgress() {
     if (this.state === 'raise') {
-      // Замах: чуть отводит назад
+      // Заносит молот снизу вверх
       const t = 1 - this.stateTimer / CONFIG.BOSS_RAISE_TIME;
-      return -0.25 * Math.min(1, t * 2);
+      return Math.min(1, t * 1.3);
     }
     if (this.state === 'smash') {
+      // Обрушивает сверху вниз
       const t = 1 - this.stateTimer / CONFIG.BOSS_SMASH_TIME;
-      return Math.min(1, t / 0.5); // быстро падает вниз и остаётся
+      return 1 + Math.min(1, t / 0.5);
     }
     if (this.state === 'recover') {
-      // Медленно поднимает обратно
-      return Math.max(0, this.stateTimer / CONFIG.BOSS_RECOVER_TIME);
+      // Вытягивает молот из земли обратно в стойку
+      return 2 - 2 * (1 - this.stateTimer / CONFIG.BOSS_RECOVER_TIME);
     }
-    return 0;
+    return 0; // покой: молот опущен
   }
 
   // ---------- МОЛОТ ----------
@@ -274,14 +286,23 @@ export class Boss {
     // Кулаки в спрайте — вверху по бокам; рукоять идёт между ними
     const gripX = sx + SPRITE_W / 2;
 
-    // Путь головки молота: из-за головы по широкой дуге вперёд и ВНИЗ, в землю.
-    // -90° — молот над головой, +58° — врезался в землю перед собой.
-    const START = -Math.PI / 2;
-    const END = (58 * Math.PI) / 180;
-    const angle = START + swing * (END - START);
+    // Дуга молота вокруг корпуса огра:
+    //   swing 0 — опущен вниз-назад (стойка), 1 — занесён над головой,
+    //   2 — врезался в землю перед собой.
+    const REST = (118 * Math.PI) / 180;   // вниз и чуть назад, вдоль ноги
+    const OVERHEAD = -Math.PI / 2;        // прямо над головой
+    const GROUND = (58 * Math.PI) / 180;  // в землю перед собой
+    let angle;
+    if (swing <= 1) {
+      // Поднимает: идёт назад-вверх через спину
+      angle = REST + swing * (OVERHEAD - REST);
+    } else {
+      // Рубит: сверху вперёд-вниз
+      angle = OVERHEAD + (swing - 1) * (GROUND - OVERHEAD);
+    }
     const len = 30;
     const pivotX = gripX;
-    const pivotY = sy + 16;              // «плечи» — вокруг них ходит молот
+    const pivotY = sy + 20;              // корпус — вокруг него ходит молот
     const hx = pivotX + Math.cos(angle) * len * f;
     const hy = pivotY + Math.sin(angle) * len;
 
@@ -311,7 +332,7 @@ export class Boss {
     ctx.fillRect(bx + bw - 6, by, 2, bh);
 
     // Удар о землю: пыль и трещины
-    if (this.state === 'smash' && swing >= 1) {
+    if (this.state === 'smash' && swing >= 2) {
       ctx.fillStyle = '#8a7b63';
       ctx.globalAlpha = 0.5;
       for (let i = 0; i < 5; i++) {
