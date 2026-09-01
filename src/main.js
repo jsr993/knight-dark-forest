@@ -18,7 +18,10 @@ import { MovingPlatform } from './entities/traps.js';
 import { Camera } from './camera.js';
 import { Background } from './background.js';
 import { drawHUD } from './hud.js';
-import { initAudio, toggleMute, isMuted, playMusic, audioState, Sfx } from './audio.js';
+import {
+  initAudio, toggleMute, isMuted, toggleMusic, isMusicMuted,
+  playMusic, audioState, Sfx,
+} from './audio.js';
 
 const W = CONFIG.SCREEN_W;
 const H = CONFIG.SCREEN_H;
@@ -177,8 +180,9 @@ function updateEntering(dt) {
 let fireTimer = 0; // отсчёт до следующего щелчка поленьев в костре
 
 function updateAudio(dt) {
-  // Мьют по клавише M
+  // M — выключить весь звук, N — только мелодию (звуки боя останутся)
   if (Input.wasPressed('mute')) toggleMute();
+  if (Input.wasPressed('muteMusic')) toggleMusic();
 
   // Рядом с боссом играет боевая тема, иначе — лесная
   const nearBoss = boss && !boss.dead
@@ -297,7 +301,7 @@ function render() {
   player.draw(bctx, camera);
   level.drawExit(bctx, camera, now); // костёр горит перед героем
   for (const ghost of ghosts) ghost.draw(bctx, camera); // призраки — поверх всех
-  drawHUD(bctx, player, isMuted());
+  drawHUD(bctx, player, isMuted(), isMusicMuted());
 
   // Затемнение при входе в замок
   if (fadeAlpha > 0) {

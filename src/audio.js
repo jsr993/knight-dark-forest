@@ -13,7 +13,8 @@ import { CONFIG } from './config.js';
 let ctx = null;        // Web Audio контекст (создаётся при первом действии)
 let master = null;     // общая громкость
 let musicGain = null;  // громкость музыки отдельно
-let muted = false;
+let muted = false;     // выключен ВЕСЬ звук (клавиша M)
+let musicMuted = false; // выключена только музыка, звуки играют (клавиша N)
 
 // ---------- НОТЫ ----------
 // Частоты в герцах. Названия: C4 — до первой октавы и т.д.
@@ -34,9 +35,30 @@ export function initAudio() {
   master = ctx.createGain();
   master.gain.value = muted ? 0 : CONFIG.VOLUME_MASTER;
   master.connect(ctx.destination);
+
   musicGain = ctx.createGain();
-  musicGain.gain.value = CONFIG.VOLUME_MUSIC;
+  musicGain.gain.value = musicMuted ? 0 : CONFIG.VOLUME_MUSIC;
   musicGain.connect(master);
+
+  // Лёгкое эхо на музыке: повторы затухают и мелодия звучит мягче,
+  // будто играют в лесу. Звуковых эффектов эхо не касается.
+  const delay = ctx.createDelay(1.0);
+  delay.delayTime.value = CONFIG.MUSIC_ECHO_TIME;
+  const feedback = ctx.createGain();
+  feedback.gain.value = CONFIG.MUSIC_ECHO_FEEDBACK;
+  const echoLevel = ctx.createGain();
+  echoLevel.gain.value = CONFIG.MUSIC_ECHO_MIX;
+  // Приглушаем высокие в эхе — так повторы звучат дальше и мягче
+  const echoTone = ctx.createBiquadFilter();
+  echoTone.type = 'lowpass';
+  echoTone.frequency.value = 1800;
+
+  musicGain.connect(delay);
+  delay.connect(feedback);
+  feedback.connect(delay);   // повторы затухают по кругу
+  delay.connect(echoTone);
+  echoTone.connect(echoLevel);
+  echoLevel.connect(master);
 }
 
 // Браузер мог «заморозить» звук — будим его
@@ -56,11 +78,30 @@ export function isMuted() {
   return muted;
 }
 
+// Выключить/включить ТОЛЬКО музыку — звуки боя при этом остаются
+export function toggleMusic() {
+  musicMuted = !musicMuted;
+  if (musicGain) {
+    // Плавно, чтобы не щёлкало
+    const now = ctx.currentTime;
+    musicGain.gain.cancelScheduledValues(now);
+    musicGain.gain.setValueAtTime(musicGain.gain.value, now);
+    musicGain.gain.linearRampToValueAtTime(musicMuted ? 0 : CONFIG.VOLUME_MUSIC, now + 0.3);
+  }
+  return musicMuted;
+}
+
+export function isMusicMuted() {
+  return musicMuted;
+}
+
 // Состояние звука — чтобы можно было проверить, что всё работает
 export function audioState() {
   return {
     контекст: ctx ? ctx.state : 'не создан',
-    выключен: muted,
+    звукВыключен: muted,
+    музыкаВыключена: musicMuted,
+    громкостьМузыки: musicGain ? +musicGain.gain.value.toFixed(3) : null,
     трек: current,
     гудокВолынки: !!droneOsc,
   };
@@ -317,21 +358,32 @@ export const Sfx = {
 // Каждая нота — [частота, длительность в шагах].
 // ============================================================
 
-// Тема леса: неспешная баллада менестреля в ре-дорийском
+// Тема леса: певучая баллада менестреля в ре-дорийском.
+// Построена как разговор: фраза-вопрос идёт вверх и повисает,
+// фраза-ответ спускается и разрешается в тонику.
 const FOREST_LEAD = [
-  [NOTE.D4, 3], [NOTE.E4, 1], [NOTE.F4, 2], [NOTE.G4, 2],
-  [NOTE.A4, 3], [NOTE.G4, 1], [NOTE.F4, 4],
-  [NOTE.E4, 2], [NOTE.F4, 2], [NOTE.D4, 4],
-  [NOTE.D4, 3], [NOTE.F4, 1], [NOTE.A4, 2], [NOTE.AS4, 2],
-  [NOTE.A4, 3], [NOTE.G4, 1], [NOTE.F4, 2], [NOTE.E4, 2],
+  // Вопрос: подъём к ля и мягкое зависание
+  [NOTE.D4, 4], [NOTE.F4, 2], [NOTE.G4, 2],
+  [NOTE.A4, 6], [NOTE.G4, 2],
+  [NOTE.F4, 4], [NOTE.E4, 4],
   [NOTE.D4, 6], [0, 2],
+  // Ответ: взлетает выше и спокойно спускается домой
+  [NOTE.A4, 4], [NOTE.C5, 2], [NOTE.D5, 2],
+  [NOTE.C5, 6], [NOTE.A4, 2],
+  [NOTE.G4, 4], [NOTE.F4, 2], [NOTE.E4, 2],
+  [NOTE.D4, 8],
+  // Светлое завершение — распев на терции
+  [NOTE.F4, 4], [NOTE.G4, 2], [NOTE.A4, 2],
+  [NOTE.G4, 4], [NOTE.F4, 4],
+  [NOTE.E4, 6], [NOTE.D4, 2],
+  [NOTE.D4, 8],
 ];
 // Бас ходит открытыми квинтами: ре — ля, до — соль
 const FOREST_BASS = [
   [NOTE.D3, 8], [NOTE.A2, 8],
-  [NOTE.C3, 8], [NOTE.G2, 8],
+  [NOTE.F2, 8], [NOTE.C3, 8],
   [NOTE.D3, 8], [NOTE.A2, 8],
-  [NOTE.F2, 8], [NOTE.D3, 8],
+  [NOTE.G2, 8], [NOTE.A2, 8],
 ];
 // Гудок волынки: тянется бесконечно на тонике
 const FOREST_DRONE = NOTE.D2;
@@ -350,8 +402,16 @@ const BOSS_BASS = [
 const BOSS_DRONE = NOTE.E2;
 
 const TRACKS = {
-  forest: { lead: FOREST_LEAD, bass: FOREST_BASS, drone: FOREST_DRONE, step: 0.19 },
-  boss: { lead: BOSS_LEAD, bass: BOSS_BASS, drone: BOSS_DRONE, step: 0.14 },
+  // Лес: мягкий треугольный голос, неспешный шаг — звучит тепло и певуче
+  forest: {
+    lead: FOREST_LEAD, bass: FOREST_BASS, drone: FOREST_DRONE,
+    step: 0.2, leadWave: 'triangle', leadVol: 0.26, droneVol: 0.05,
+  },
+  // Босс: жёсткая квадратная волна и быстрый шаг — тревожно
+  boss: {
+    lead: BOSS_LEAD, bass: BOSS_BASS, drone: BOSS_DRONE,
+    step: 0.14, leadWave: 'square', leadVol: 0.17, droneVol: 0.08,
+  },
 };
 
 let current = null;      // название играющего трека
@@ -363,19 +423,44 @@ let droneOsc = null;     // гудок волынки — тянется, пок
 let droneOsc2 = null;    // вторая труба, квинтой выше
 let droneGain = null;
 
-// Одна нота мелодии
-function playNote(freq, dur, when, type, vol) {
+// Одна нота мелодии.
+// Мягкая огибающая (плавный вход и долгий спад) плюс лёгкое вибрато
+// на длинных нотах — от этого мелодия звучит певуче, а не «пищаще».
+function playNote(freq, dur, when, type, vol, singing = false) {
   if (!freq) return; // пауза
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = type;
   osc.frequency.setValueAtTime(freq, when);
+
+  // Приглушаем резкие верхние призвуки квадратной волны
+  const soft = ctx.createBiquadFilter();
+  soft.type = 'lowpass';
+  soft.frequency.value = singing ? 2400 : 1200;
+
   gain.gain.setValueAtTime(0.0001, when);
-  gain.gain.exponentialRampToValueAtTime(vol, when + 0.01);
-  gain.gain.setValueAtTime(vol, when + dur * 0.6);
-  gain.gain.exponentialRampToValueAtTime(0.0001, when + dur * 0.95);
-  osc.connect(gain);
+  gain.gain.exponentialRampToValueAtTime(vol, when + 0.035);      // мягкий вход
+  gain.gain.setValueAtTime(vol, when + dur * 0.55);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + dur * 0.98); // долгий спад
+
+  osc.connect(soft);
+  soft.connect(gain);
   gain.connect(musicGain);
+
+  // Вибрато — только на распевных длинных нотах
+  let vib = null;
+  if (singing && dur > 0.5) {
+    vib = ctx.createOscillator();
+    const vibGain = ctx.createGain();
+    vib.frequency.value = 5.2;
+    vibGain.gain.setValueAtTime(0, when);
+    vibGain.gain.linearRampToValueAtTime(freq * 0.008, when + dur * 0.4);
+    vib.connect(vibGain);
+    vibGain.connect(osc.frequency);
+    vib.start(when);
+    vib.stop(when + dur);
+  }
+
   osc.start(when);
   osc.stop(when + dur);
 }
@@ -387,11 +472,11 @@ function scheduler() {
   const horizon = ctx.currentTime + 0.35;
 
   while (nextTime < horizon) {
-    // Мелодия
+    // Мелодия — поёт мягким голосом с вибрато
     if (nextTime >= leadUntil) {
       const [freq, len] = track.lead[leadIdx % track.lead.length];
       const dur = len * track.step;
-      playNote(freq, dur, nextTime, 'square', 0.16);
+      playNote(freq, dur, nextTime, track.leadWave, track.leadVol, true);
       leadUntil = nextTime + dur;
       leadIdx++;
     }
@@ -399,7 +484,7 @@ function scheduler() {
     if (nextTime >= bassUntil) {
       const [freq, len] = track.bass[bassIdx % track.bass.length];
       const dur = len * track.step;
-      playNote(freq, dur * 0.95, nextTime, 'triangle', 0.2);
+      playNote(freq, dur * 0.95, nextTime, 'triangle', 0.19);
       bassUntil = nextTime + dur;
       bassIdx++;
     }
@@ -407,13 +492,19 @@ function scheduler() {
   }
 }
 
-// Гудок волынки: две тянущиеся трубы — тоника и квинта над ней
-function startDrone(freq) {
+// Гудок волынки: две тянущиеся трубы — тоника и квинта над ней.
+// Приглушён фильтром, чтобы гудел тепло на фоне, а не жужжал.
+function startDrone(freq, vol) {
   stopDrone();
   droneGain = ctx.createGain();
   droneGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-  droneGain.gain.exponentialRampToValueAtTime(0.09, ctx.currentTime + 0.8);
-  droneGain.connect(musicGain);
+  droneGain.gain.exponentialRampToValueAtTime(vol, ctx.currentTime + 1.2);
+
+  const warm = ctx.createBiquadFilter();
+  warm.type = 'lowpass';
+  warm.frequency.value = 420;   // срезаем весь «писк», оставляя мягкий гул
+  droneGain.connect(warm);
+  warm.connect(musicGain);
 
   droneOsc = ctx.createOscillator();
   droneOsc.type = 'sawtooth';
@@ -422,8 +513,9 @@ function startDrone(freq) {
   droneOsc.start();
 
   droneOsc2 = ctx.createOscillator();
-  droneOsc2.type = 'sawtooth';
+  droneOsc2.type = 'triangle';
   droneOsc2.frequency.value = freq * 1.5; // чистая квинта — средневековый органум
+  droneOsc2.detune.value = 4;             // лёгкая расстройка — «живой» звук
   droneOsc2.connect(droneGain);
   droneOsc2.start();
 }
@@ -442,7 +534,7 @@ export function playMusic(name) {
   leadIdx = 0; bassIdx = 0;
   nextTime = ctx.currentTime + 0.05;
   leadUntil = 0; bassUntil = 0;
-  startDrone(TRACKS[name].drone);
+  startDrone(TRACKS[name].drone, TRACKS[name].droneVol);
   if (!timer) timer = setInterval(scheduler, 60);
 }
 

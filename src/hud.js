@@ -50,7 +50,7 @@ function drawNumber(ctx, value, x, y, color) {
   }
 }
 
-export function drawHUD(ctx, player, muted) {
+export function drawHUD(ctx, player, muted, musicMuted) {
   // Сердца слева сверху
   for (let i = 0; i < CONFIG.PLAYER_HEARTS; i++) {
     drawHeart(ctx, 4 + i * 10, 4, i < player.hearts);
@@ -66,7 +66,7 @@ export function drawHUD(ctx, player, muted) {
   ctx.fillRect(x + 2, 5, 2, 2);
   drawNumber(ctx, player.coins, x + 9, 5, '#f2c14e');
 
-  // Значок «звук выключен» (клавиша M) — перечёркнутый динамик
+  // Значок «весь звук выключен» (клавиша M) — перечёркнутый динамик
   if (muted) {
     const mx = CONFIG.SCREEN_W - 12;
     const my = CONFIG.SCREEN_H - 11;
@@ -75,5 +75,14 @@ export function drawHUD(ctx, player, muted) {
     ctx.fillRect(mx + 2, my, 3, 7);
     ctx.fillStyle = '#e63946';
     for (let i = 0; i < 7; i++) ctx.fillRect(mx + i, my + i, 1, 1); // косая черта
+  } else if (musicMuted) {
+    // Значок «мелодия выключена» (клавиша N) — перечёркнутая нотка
+    const mx = CONFIG.SCREEN_W - 12;
+    const my = CONFIG.SCREEN_H - 11;
+    ctx.fillStyle = '#8d99ae';
+    ctx.fillRect(mx + 4, my, 2, 5);      // палочка ноты
+    ctx.fillRect(mx + 1, my + 4, 4, 3);  // головка
+    ctx.fillStyle = '#e63946';
+    for (let i = 0; i < 7; i++) ctx.fillRect(mx + i, my + i, 1, 1);
   }
 }
