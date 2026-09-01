@@ -18,6 +18,7 @@ import { MovingPlatform } from './entities/traps.js';
 import { Camera } from './camera.js';
 import { Background } from './background.js';
 import { drawHUD } from './hud.js';
+import { initAudio, toggleMute, isMuted, playMusic, audioState, Sfx } from './audio.js';
 
 const W = CONFIG.SCREEN_W;
 const H = CONFIG.SCREEN_H;
@@ -41,7 +42,8 @@ window.addEventListener('resize', resize);
 resize();
 
 // --- Создаём мир ---
-Input.init();
+// Звук включается при первом нажатии клавиши: так требует браузер
+Input.init(initAudio);
 const level = new Level(LEVEL1);
 const player = new Player(level.spawnX, level.spawnY);
 // Движущиеся платформы из меток 'm' и 'M' на карте
@@ -70,7 +72,11 @@ const background = new Background();
 camera.update(player, 1);
 
 // Доступ к состоянию игры из консоли браузера (для отладки)
-window.__game = { player, camera, level, platforms, enemies, ghosts, boss, chests, getCoins: () => coins };
+window.__game = {
+  player, camera, level, platforms, enemies, ghosts, boss, chests,
+  getCoins: () => coins,
+  audioState, Sfx,
+};
 
 // Пересекаются ли два прямоугольника
 function overlaps(a, b) {
@@ -109,12 +115,14 @@ function updateVisiting(dt) {
       player.hidden = true;              // вошёл внутрь
       visiting.phase = 'inside';
       visiting.timer = 1.3;
+      Sfx.doorCreak();                   // скрипнули старые петли
     }
   } else if (visiting.phase === 'inside') {
     visiting.timer -= dt;
     if (visiting.timer <= 0) {
       // Отдохнул: сердце восстановлено, хозяева накормили
       if (player.hearts < CONFIG.PLAYER_HEARTS) player.hearts++;
+      Sfx.heal();
       player.hidden = false;
       visiting.door.used = true;
       visiting = null;
@@ -136,6 +144,7 @@ function updateEntering(dt) {
       player.facing = 1;     // повернулся к огню
       player.sitting = true; // сел
       entering = { phase: 'rest', timer: 2.6 };
+      Sfx.rest();            // спокойная фраза на привале
     }
   } else if (entering.phase === 'rest') {
     // Сидит и греется
@@ -164,8 +173,34 @@ function updateEntering(dt) {
   }
 }
 
+// ---------- МУЗЫКА И ЗВУКОВАЯ АТМОСФЕРА ----------
+let fireTimer = 0; // отсчёт до следующего щелчка поленьев в костре
+
+function updateAudio(dt) {
+  // Мьют по клавише M
+  if (Input.wasPressed('mute')) toggleMute();
+
+  // Рядом с боссом играет боевая тема, иначе — лесная
+  const nearBoss = boss && !boss.dead
+    && Math.abs((player.x + player.w / 2) - (boss.x + boss.w / 2)) < 220;
+  playMusic(nearBoss ? 'boss' : 'forest');
+
+  // Костёр потрескивает, когда герой рядом — чем ближе, тем чаще
+  if (level.exit) {
+    const dist = Math.abs((player.x + player.w / 2) - (level.exit.x + 16));
+    if (dist < 150 && !isMuted()) {
+      fireTimer -= dt;
+      if (fireTimer <= 0) {
+        Sfx.fireCrackle();
+        fireTimer = 0.12 + Math.random() * 0.5;
+      }
+    }
+  }
+}
+
 // Один шаг игровой логики
 function update(dt) {
+  updateAudio(dt);
   for (const plat of platforms) plat.update(dt);
 
   if (entering) {
@@ -262,7 +297,7 @@ function render() {
   player.draw(bctx, camera);
   level.drawExit(bctx, camera, now); // костёр горит перед героем
   for (const ghost of ghosts) ghost.draw(bctx, camera); // призраки — поверх всех
-  drawHUD(bctx, player);
+  drawHUD(bctx, player, isMuted());
 
   // Затемнение при входе в замок
   if (fadeAlpha > 0) {

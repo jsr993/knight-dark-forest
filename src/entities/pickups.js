@@ -6,6 +6,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { Sfx } from '../audio.js';
 
 const T = CONFIG.TILE;
 
@@ -70,6 +71,7 @@ export class Coin {
         this.y < player.y + player.h && this.y + this.h > player.y) {
       this.taken = true;
       player.coins++;
+      Sfx.coin();
     }
     if (this.life <= 0) this.taken = true;
   }
@@ -129,9 +131,14 @@ export class Chest {
 
   // Удар мечом: выбиваем монету. Возвращает её или null, если пусто
   hurt() {
-    if (this.empty) return null;
+    if (this.empty) {
+      Sfx.chestHit(); // пустой сундук просто глухо стучит
+      return null;
+    }
     this.coinsLeft--;
     this.shake = 0.18;
+    Sfx.chestHit();
+    Sfx.coinPop(); // монета со звоном выпрыгивает наружу
     // Монета вылетает вверх, слегка в случайную сторону
     const vx = (Math.random() - 0.5) * 55;
     const vy = -CONFIG.COIN_POP_SPEED - Math.random() * 40;

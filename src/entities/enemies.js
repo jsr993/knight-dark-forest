@@ -8,6 +8,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { Sfx } from '../audio.js';
 import {
   drawSprite,
   DARK_IDLE,
@@ -100,6 +101,7 @@ export class Enemy {
             this.state = 'crouch';
             this.stateTimer = CONFIG.ENEMY_CROUCH_TIME;
             speed = 0;
+            Sfx.knightShout(); // боевой клич перед рывком
           } else if (dy < -24 && Math.abs(dx) < 90) {
             // Герой стоит выше: подпрыгиваем к нему
             this.vy = -CONFIG.ENEMY_JUMP_SPEED;
@@ -173,7 +175,12 @@ export class Enemy {
     this.attackCd = Math.max(this.attackCd, 0.6);
     // отлетаем ОТ бьющего
     this.knock = (this.x + this.w / 2) < fromX ? -90 : 90;
-    if (this.hp <= 0) this.dying = 0.35; // запускаем анимацию смерти
+    if (this.hp <= 0) {
+      this.dying = 0.35; // запускаем анимацию смерти
+      Sfx.knightDeathCry();
+    } else {
+      Sfx.hitEnemy();
+    }
   }
 
   // Упрощённые коллизии с тайлами (как у героя). Возвращает true, если упёрлись в стену
@@ -386,12 +393,20 @@ export class Zombie extends Enemy {
       return;
     }
     if (this.flash > 0) this.flash -= dt;
+    const moanBefore = this.moan;
     this.moan += dt;
 
     // ---------- МОЗГИ: просто бредёт на героя ----------
     const dx = (player.x + player.w / 2) - (this.x + this.w / 2);
     const dy = (player.y + player.h) - (this.y + this.h);
     this.chasing = Math.abs(dx) < CONFIG.ZOMBIE_SIGHT && Math.abs(dy) < 48;
+
+    // Рычит, когда чует героя рядом (раз в период стона)
+    const period = CONFIG.ZOMBIE_MOAN_PERIOD;
+    if (this.chasing && Math.floor(moanBefore / period) !== Math.floor(this.moan / period)
+        && Math.abs(dx) < 150) {
+      Sfx.zombieGrowl();
+    }
 
     let speed = CONFIG.ZOMBIE_PATROL_SPEED;
     if (this.chasing) {
@@ -437,7 +452,12 @@ export class Zombie extends Enemy {
     this.flash = 0.12;
     // Мертвеца почти не отбрасывает — он не чувствует удара
     this.knock = (this.x + this.w / 2) < fromX ? -35 : 35;
-    if (this.hp <= 0) this.dying = 0.5; // оседает медленнее рыцаря
+    if (this.hp <= 0) {
+      this.dying = 0.5; // оседает медленнее рыцаря
+      Sfx.zombieGrowl();
+    } else {
+      Sfx.hitEnemy();
+    }
   }
 
   draw(ctx, camera) {
@@ -534,6 +554,7 @@ export class Ghost {
         this.state = 'fly';
         this.travelled = 0;
         this.alpha = 0;
+        Sfx.ghost(); // призрак срывается с воем
       }
       return;
     }

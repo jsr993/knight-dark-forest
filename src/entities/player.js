@@ -8,6 +8,7 @@
 
 import { CONFIG } from '../config.js';
 import { Input } from '../input.js';
+import { Sfx } from '../audio.js';
 import {
   drawSprite,
   KNIGHT_IDLE,
@@ -95,6 +96,7 @@ export class Player {
       this.attackTimer = CONFIG.ATTACK_TIME;
       this.attackCooldown = CONFIG.ATTACK_COOLDOWN;
       this.swingId++; // новый мах — можно снова задеть каждого врага
+      Sfx.sword();
     }
 
     // ---------- ВОДА ----------
@@ -138,6 +140,7 @@ export class Player {
       this.jumpBuffer = 0;
       this.jumpHeld = false;
       this.riding = null;
+      Sfx.splash();
     } else if (this.jumpBuffer > 0 && this.stun <= 0) {
       if (this.coyote > 0) {
         // Обычный прыжок с земли (или с платформы)
@@ -146,12 +149,14 @@ export class Player {
         this.coyote = 0;
         this.jumpHeld = true;
         this.riding = null;
+        Sfx.jump();
       } else if (this.airJumpsLeft > 0) {
         // ДВОЙНОЙ ПРЫЖОК: ещё один рывок вверх прямо в воздухе
         this.vy = -CONFIG.AIR_JUMP_SPEED;
         this.airJumpsLeft--;
         this.jumpBuffer = 0;
         this.jumpHeld = true;
+        Sfx.doubleJump();
       }
     }
 
@@ -174,10 +179,16 @@ export class Player {
 
     // ---------- ЛАВА ОБЖИГАЕТ ----------
     if (level.overlapsLava(this)) {
+      const wasInvuln = this.invuln > 0;
       const fromX = this.x + this.w / 2 + this.facing * 8; // отбрасывает назад
       this.hurt(fromX);
       if (this.stun > 0) this.vy = -CONFIG.LAVA_DAMAGE_KNOCK * 0.6; // выбрасывает вверх
+      if (!wasInvuln) Sfx.burn();
     }
+
+    // ---------- ВСПЛЕСК ПРИ ВХОДЕ В ВОДУ ----------
+    if (this.inWater && !this.wasInWater) Sfx.splash();
+    this.wasInWater = this.inWater;
 
     // На земле и в воде запас воздушных прыжков восстанавливается
     if (this.onGround || this.inWater) this.airJumpsLeft = CONFIG.AIR_JUMPS;
@@ -198,6 +209,7 @@ export class Player {
   hurt(fromX) {
     if (this.invuln > 0) return; // мигаем — неуязвимы
     this.hearts--;
+    Sfx.hurt();
     this.invuln = CONFIG.HURT_INVULN;
     this.stun = CONFIG.HURT_STUN;
     this.climbing = false;

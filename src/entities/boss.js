@@ -7,6 +7,7 @@
 // ============================================================
 
 import { CONFIG } from '../config.js';
+import { Sfx } from '../audio.js';
 import {
   drawSprite,
   OGRE_IDLE,
@@ -74,11 +75,17 @@ export class Boss {
         this.state = 'smash';
         this.stateTimer = CONFIG.BOSS_SMASH_TIME;
         this.hitThisSmash = false;
+        this.smashLanded = false;
         this.dir = dx > 0 ? 1 : -1; // бьёт туда, где герой
       }
     } else if (this.state === 'smash') {
       // Молот падает сверху вниз
       this.stateTimer -= dt;
+      // Грохот в момент, когда молот врезался в землю
+      if (!this.smashLanded && this.swingProgress() >= 1.9) {
+        this.smashLanded = true;
+        Sfx.bossSmash();
+      }
       if (this.stateTimer <= 0) {
         this.state = 'recover';
         this.stateTimer = CONFIG.BOSS_RECOVER_TIME;
@@ -101,6 +108,7 @@ export class Boss {
           this.state = 'raise';
           this.stateTimer = CONFIG.BOSS_RAISE_TIME;
           speed = 0;
+          Sfx.bossRoar(); // рёв перед ударом
         }
       }
     }
@@ -159,7 +167,12 @@ export class Boss {
     this.flash = 0.12;
     // Тяжёлого огра почти не сдвинуть
     this.knock = (this.x + this.w / 2) < fromX ? -30 : 30;
-    if (this.hp <= 0) this.dying = 1.1; // долгая, зрелищная смерть
+    if (this.hp <= 0) {
+      this.dying = 1.1;  // долгая, зрелищная смерть
+      Sfx.bossRoar();    // предсмертный рёв
+    } else {
+      Sfx.ogreHurt();    // рычит от боли
+    }
   }
 
   moveAndCollide(dt, level, vx) {

@@ -22,9 +22,15 @@ const KEYMAP = {
 const down = new Set();     // действия, которые сейчас удерживаются
 const pressed = new Set();  // действия, нажатые в текущем кадре
 
+// Браузер включает звук только после первого действия игрока
+let onFirstKey = null;
+
 export const Input = {
-  init() {
+  // callback вызовется один раз при самом первом нажатии — там мы будим звук
+  init(firstKeyCallback) {
+    onFirstKey = firstKeyCallback || null;
     window.addEventListener('keydown', (e) => {
+      if (onFirstKey) { onFirstKey(); onFirstKey = null; }
       const action = KEYMAP[e.code];
       if (!action) return;
       e.preventDefault(); // чтобы пробел и стрелки не скроллили страницу
