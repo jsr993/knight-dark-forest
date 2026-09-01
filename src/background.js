@@ -53,10 +53,94 @@ function makeCanvas(w, h) {
 }
 
 export class Background {
-  constructor() {
+  constructor(levelWidth = 4800) {
+    this.levelWidth = levelWidth;
     this.sky = this.buildSky();
     this.far = this.buildFarForest();
     this.near = this.buildBigTrees();
+    this.castle = this.buildCastle();
+
+    // Светлячки: живые точки, мерцающие среди деревьев
+    const rng = mulberry32(77);
+    this.fireflies = [];
+    for (let i = 0; i < 26; i++) {
+      this.fireflies.push({
+        x: rng() * 900,          // своя «полоса» по ширине, повторяется
+        y: 40 + rng() * 120,
+        phase: rng() * Math.PI * 2,
+        speed: 0.4 + rng() * 0.8,
+        radius: 6 + rng() * 14,
+      });
+    }
+  }
+
+  // ---------- ЗАМОК НА ГОРИЗОНТЕ ----------
+  // Виден издалека во второй половине уровня и растёт по мере приближения —
+  // это цель пути, к нему герой и пробивается через лес
+  buildCastle() {
+    const c = makeCanvas(150, 120);
+    const ctx = c.getContext('2d');
+    const base = 118;
+
+    const WALL = '#232f3f';
+    const WALL_LIT = '#2c3a4c';
+    const WALL_DARK = '#1a232f';
+    const WINDOW = '#d9a441';
+
+    // Скала, на которой стоит замок
+    ctx.fillStyle = WALL_DARK;
+    ctx.fillRect(10, base - 14, 130, 14);
+    ctx.fillRect(20, base - 20, 110, 8);
+
+    // Стена между башнями
+    ctx.fillStyle = WALL;
+    ctx.fillRect(28, base - 52, 94, 34);
+    ctx.fillStyle = WALL_LIT;
+    ctx.fillRect(28, base - 52, 94, 2);
+    // Зубцы на стене
+    for (let x = 28; x < 122; x += 8) {
+      ctx.fillStyle = WALL;
+      ctx.fillRect(x, base - 57, 5, 5);
+    }
+    // Ворота
+    ctx.fillStyle = WALL_DARK;
+    ctx.fillRect(68, base - 34, 14, 16);
+    ctx.fillRect(70, base - 37, 10, 4);
+
+    // Три башни разной высоты
+    const towers = [[18, 70], [62, 92], [110, 62]];
+    for (const [tx, th] of towers) {
+      const tw = 22;
+      ctx.fillStyle = WALL;
+      ctx.fillRect(tx, base - th, tw, th - 8);
+      ctx.fillStyle = WALL_LIT;
+      ctx.fillRect(tx, base - th, 2, th - 8);
+      // Зубцы башни
+      for (let x = 0; x < tw; x += 6) {
+        ctx.fillStyle = WALL;
+        ctx.fillRect(tx + x, base - th - 5, 4, 5);
+      }
+      // Островерхая крыша
+      ctx.fillStyle = WALL_DARK;
+      for (let i = 0; i < 8; i++) {
+        ctx.fillRect(tx + i + 3, base - th - 5 - (8 - i), tw - i * 2 - 6, 1);
+      }
+      // Светящиеся окна — в замке кто-то есть
+      ctx.fillStyle = WINDOW;
+      ctx.globalAlpha = 0.75;
+      ctx.fillRect(tx + 8, base - th + 12, 3, 4);
+      ctx.fillRect(tx + 8, base - th + 24, 3, 4);
+      ctx.globalAlpha = 1;
+    }
+
+    // Флаги на башнях
+    ctx.fillStyle = '#8a2231';
+    ctx.fillRect(28, base - 70 - 20, 1, 8);
+    ctx.fillRect(29, base - 70 - 20, 6, 4);
+    ctx.fillRect(120, base - 62 - 20, 1, 8);
+    ctx.fillRect(121, base - 62 - 20, 6, 4);
+
+    return c;
   }
 
   // ---------- СЛОЙ 1: небо ----------
@@ -234,8 +318,70 @@ export class Background {
   draw(ctx, camera) {
     // Небо почти не двигается (лёгкий сдвиг вверх при подъёме камеры)
     ctx.drawImage(this.sky, 0, Math.round(-camera.y * 0.08));
+    this.drawCastle(ctx, camera);
     this.drawWrapped(ctx, this.far, camera.x * FAR_FACTOR, camera.y * 0.18);
+    this.drawMoonlight(ctx, camera);
     this.drawWrapped(ctx, this.near, camera.x * NEAR_FACTOR, camera.y * 0.4);
+    this.drawFireflies(ctx, camera);
+  }
+
+  // Косые лучи лунного света, пробивающиеся сквозь кроны
+  drawMoonlight(ctx, camera) {
+    const offset = -camera.x * 0.22;
+    ctx.fillStyle = '#7d94ad';
+    ctx.globalAlpha = 0.05;
+    for (let i = 0; i < 6; i++) {
+      // Луч — наклонная лесенка из полосок
+      const baseX = ((i * 190 + offset) % 900 + 900) % 900 - 120;
+      for (let s = 0; s < 26; s++) {
+        const w = 16 - Math.floor(s / 4);
+        ctx.fillRect(Math.round(baseX + s * 2), s * 5, w, 5);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Светлячки мерцают и плавают между стволами
+  drawFireflies(ctx, camera) {
+    const t = performance.now() / 1000;
+    for (const f of this.fireflies) {
+      // Плавают по маленькому кругу
+      const fx = f.x + Math.cos(t * f.speed + f.phase) * f.radius - camera.x * 0.5;
+      const fy = f.y + Math.sin(t * f.speed * 1.3 + f.phase) * f.radius * 0.6 - camera.y * 0.5;
+      // Повторяем по ширине, чтобы светлячки были на всём уровне
+      const x = ((fx % 900) + 900) % 900;
+      if (x > CONFIG.SCREEN_W + 4) continue;
+
+      // Мигают вразнобой, иногда совсем гаснут
+      const blink = Math.sin(t * 2.2 + f.phase * 3);
+      if (blink < -0.2) continue;
+      const glow = Math.min(1, blink + 0.4);
+
+      ctx.fillStyle = '#c9e26b';
+      ctx.globalAlpha = 0.16 * glow;
+      ctx.fillRect(Math.round(x) - 1, Math.round(fy) - 1, 3, 3);
+      ctx.globalAlpha = 0.85 * glow;
+      ctx.fillRect(Math.round(x), Math.round(fy), 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Замок стоит в конце пути: проявляется во второй половине уровня
+  // и медленно приближается, пока герой идёт вправо
+  drawCastle(ctx, camera) {
+    const progress = camera.x / Math.max(1, this.levelWidth - CONFIG.SCREEN_W);
+    if (progress < 0.35) return; // в начале леса замка ещё не видно
+
+    // Проявляется постепенно из тумана
+    const alpha = Math.min(1, (progress - 0.35) / 0.3);
+    // Двигается очень медленно — он далеко. К концу уровня выходит
+    // почти на середину экрана: герой подошёл к нему вплотную
+    const x = Math.round(340 - (progress - 0.35) * 290);
+    const y = Math.round(14 - camera.y * 0.05);
+
+    ctx.globalAlpha = alpha * 0.9;
+    ctx.drawImage(this.castle, x, y);
+    ctx.globalAlpha = 1;
   }
 
   // Рисуем слой с повтором по горизонтали

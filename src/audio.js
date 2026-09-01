@@ -331,6 +331,25 @@ export const Sfx = {
     noise({ time: 0.3, vol: 0.3, filterFrom: 1600, filterTo: 80 });
     tone({ freq: 90, freqTo: 40, time: 0.3, vol: 0.28, type: 'square' });
   },
+  // Переход по пунктам меню — короткий тик
+  menuMove() {
+    tone({ freq: 620, time: 0.05, vol: 0.14, type: 'square' });
+  },
+  // Выбор пункта — подтверждающая пара нот вверх
+  menuSelect() {
+    tone({ freq: NOTE.A4, time: 0.07, vol: 0.16 });
+    tone({ freq: NOTE.D5, time: 0.14, vol: 0.16, delay: 0.06 });
+  },
+  // Возврат назад — пара нот вниз
+  menuBack() {
+    tone({ freq: NOTE.D5, time: 0.06, vol: 0.13 });
+    tone({ freq: NOTE.A4, time: 0.12, vol: 0.13, delay: 0.05 });
+  },
+  // Пункт закрыт — глухой отказ
+  menuLocked() {
+    tone({ freq: 160, freqTo: 110, time: 0.16, vol: 0.16, type: 'square' });
+  },
+
   heal() {
     // Отдых в домике: тёплый восходящий аккорд
     tone({ freq: NOTE.C4, time: 0.18, vol: 0.18 });

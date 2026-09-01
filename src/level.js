@@ -19,6 +19,12 @@ const COL_MOSS = '#4d6b3a';        // мох на боках
 const COL_BUSH = '#2f5c34';        // кусты
 const COL_BUSH_LIGHT = '#437a45';  // блики кустов
 const COL_ROOT = '#5a4a35';        // свисающие корешки
+// --- Мелкий декор, оживляющий землю ---
+const COL_MUSH_CAP = '#a33c3c';    // шляпка поганки
+const COL_MUSH_DOT = '#e8d7c0';    // крапинки на шляпке
+const COL_MUSH_STEM = '#d8cdb4';   // ножка гриба
+const COL_FLOWER = '#6fa8dc';      // ночной цветок
+const COL_FLOWER_STEM = '#2c5a2c'; // стебель цветка
 // --- Останки павших рыцарей в пустотах ---
 const COL_BONE = '#d8d2c0';        // кости
 const COL_BONE_DARK = '#a1997f';   // тень костей
@@ -393,6 +399,41 @@ export class Level {
         ctx.fillStyle = COL_BUSH_LIGHT;
         ctx.fillRect(bx + 1, y - 6, 2, 2);
         ctx.fillRect(bx + 5, y - 4, 2, 2);
+      } else if (rnd(120) > 0.86) {
+        // Поганки: бледные ножки и красные в крапинку шляпки —
+        // яркое пятно среди мрачной зелени
+        const mx = x + 3 + Math.floor(rnd(121) * 7);
+        const tall = rnd(122) > 0.5;
+        ctx.fillStyle = COL_MUSH_STEM;
+        ctx.fillRect(mx + 1, y - 3, 2, 3);
+        ctx.fillStyle = COL_MUSH_CAP;
+        ctx.fillRect(mx, y - 5, 4, 2);
+        ctx.fillStyle = COL_MUSH_DOT;
+        ctx.fillRect(mx + 1, y - 5, 1, 1);
+        if (tall) {
+          // рядом второй, поменьше
+          ctx.fillStyle = COL_MUSH_STEM;
+          ctx.fillRect(mx + 5, y - 2, 1, 2);
+          ctx.fillStyle = COL_MUSH_CAP;
+          ctx.fillRect(mx + 4, y - 3, 3, 1);
+        }
+      } else if (rnd(130) > 0.88) {
+        // Ночные цветы — холодные синие огоньки в траве
+        const fx = x + 4 + Math.floor(rnd(131) * 6);
+        ctx.fillStyle = COL_FLOWER_STEM;
+        ctx.fillRect(fx + 1, y - 4, 1, 4);
+        ctx.fillStyle = COL_FLOWER;
+        ctx.fillRect(fx, y - 6, 3, 2);
+        ctx.fillRect(fx + 1, y - 7, 1, 1);
+      } else if (rnd(140) > 0.9) {
+        // Замшелый валун
+        const sx2 = x + 2 + Math.floor(rnd(141) * 5);
+        ctx.fillStyle = COL_STONE_DARK;
+        ctx.fillRect(sx2, y - 5, 8, 5);
+        ctx.fillStyle = COL_STONE;
+        ctx.fillRect(sx2 + 1, y - 6, 6, 2);
+        ctx.fillStyle = COL_MOSS;
+        ctx.fillRect(sx2 + 1, y - 6, 3, 1);
       }
     }
 

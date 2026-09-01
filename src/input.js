@@ -14,7 +14,7 @@ const KEYMAP = {
   Space: 'jump',      KeyW: 'jump',
   KeyJ: 'attack',     KeyX: 'attack',
   KeyK: 'throw',      KeyC: 'throw',
-  Escape: 'pause',    KeyP: 'pause',
+  Escape: 'back',     KeyP: 'pause',
   KeyM: 'mute',        // выключить весь звук
   KeyN: 'muteMusic',   // выключить только музыку
   Enter: 'start',

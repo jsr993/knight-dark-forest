@@ -23,6 +23,10 @@ import {
   playMusic, stopMusic, playFanfare, audioState, Sfx,
 } from './audio.js';
 import { drawTextCentered } from './font.js';
+import {
+  MAIN_MENU, LEVELS,
+  drawTitle, drawLevelSelect, drawSettings, drawQuit,
+} from './scenes.js';
 
 const W = CONFIG.SCREEN_W;
 const H = CONFIG.SCREEN_H;
@@ -71,7 +75,7 @@ const boss = level.bossSpawn
 const chests = level.chestSpawns.map((s) => new Chest(s.col, s.row));
 let coins = [];
 const camera = new Camera(level);
-const background = new Background();
+const background = new Background(level.pixelW);
 // Камера сразу смотрит на героя, без "подъезда" в первый кадр
 camera.update(player, 1);
 
@@ -105,6 +109,29 @@ let fadeAlpha = 0;   // затемнение экрана (0 — нет, 1 — �
 let victory = false; // уровень пройден — показываем экран победы
 let victoryTimer = 0;
 let levelTime = 0;   // сколько секунд идёт прохождение
+
+// ---------- ЭКРАНЫ ----------
+// 'title' — главное меню, 'levels' — выбор уровня, 'settings' — параметры,
+// 'quit' — прощание, 'game' — сама игра
+let scene = 'title';
+let menuIndex = 0;
+
+// Начать уровень заново с чистого листа
+function startLevel() {
+  fadeAlpha = 0;
+  victory = false;
+  levelTime = 0;
+  player.coins = 0;
+  player.respawn();
+  player.hidden = false;
+  player.sitting = false;
+  entering = null;
+  visiting = null;
+  resetEnemies();
+  for (const door of level.doors) door.used = false;
+  camera.update(player, 1);
+  scene = 'game';
+}
 
 // Огр повержен? Пока нет — костёр не разжечь и отдыхать нельзя
 function bossDefeated() {
@@ -220,8 +247,74 @@ function updateAudio(dt) {
   }
 }
 
+// ---------- НАВИГАЦИЯ ПО МЕНЮ ----------
+function updateMenu() {
+  playMusic('forest'); // в меню тихо играет лесная баллада
+
+  // Переключатели звука работают на любом экране
+  if (Input.wasPressed('mute')) toggleMute();
+  if (Input.wasPressed('muteMusic')) toggleMusic();
+
+  const items = scene === 'title' ? MAIN_MENU.length
+    : scene === 'levels' ? LEVELS.length
+      : scene === 'settings' ? 3 : 0;
+
+  if (items > 0) {
+    if (Input.wasPressed('up')) {
+      menuIndex = (menuIndex - 1 + items) % items;
+      Sfx.menuMove();
+    }
+    if (Input.wasPressed('down')) {
+      menuIndex = (menuIndex + 1) % items;
+      Sfx.menuMove();
+    }
+  }
+
+  const enter = Input.wasPressed('start');
+  const back = Input.wasPressed('back');
+
+  if (scene === 'title' && enter) {
+    if (menuIndex === 0) { Sfx.menuSelect(); startLevel(); }
+    else if (menuIndex === 1) { Sfx.menuSelect(); scene = 'levels'; menuIndex = 0; }
+    else if (menuIndex === 2) { Sfx.menuSelect(); scene = 'settings'; menuIndex = 0; }
+    else { Sfx.menuSelect(); scene = 'quit'; }
+  } else if (scene === 'levels') {
+    if (enter) {
+      if (LEVELS[menuIndex].unlocked) { Sfx.menuSelect(); startLevel(); }
+      else Sfx.menuLocked(); // уровень ещё не открыт
+    }
+    if (back) { Sfx.menuBack(); scene = 'title'; menuIndex = 1; }
+  } else if (scene === 'settings') {
+    if (enter) {
+      if (menuIndex === 0) { toggleMute(); Sfx.menuSelect(); }
+      else if (menuIndex === 1) { toggleMusic(); Sfx.menuSelect(); }
+      else { Sfx.menuBack(); scene = 'title'; menuIndex = 2; }
+    }
+    if (back) { Sfx.menuBack(); scene = 'title'; menuIndex = 2; }
+  } else if (scene === 'quit') {
+    if (enter || back) { Sfx.menuBack(); scene = 'title'; menuIndex = 0; }
+  }
+
+  Input.endFrame();
+}
+
 // Один шаг игровой логики
 function update(dt) {
+  // Экраны меню живут своей жизнью, игра в это время стоит
+  if (scene !== 'game') {
+    updateMenu();
+    return;
+  }
+
+  // Esc в игре — выйти в главное меню
+  if (Input.wasPressed('back')) {
+    scene = 'title';
+    menuIndex = 0;
+    Sfx.menuBack();
+    Input.endFrame();
+    return;
+  }
+
   // На экране победы игра замирает — ждём Enter
   if (victory) {
     updateVictory(dt);
@@ -336,12 +429,40 @@ function drawVictoryScreen(ctx) {
   }
 }
 
+// Показать буфер 320x180 на настоящем экране, увеличив его целое число раз
+function blitToScreen() {
+  const scale = Math.max(1, Math.floor(Math.min(screen.width / W, screen.height / H)));
+  const dx = Math.floor((screen.width - W * scale) / 2);
+  const dy = Math.floor((screen.height - H * scale) / 2);
+
+  sctx.imageSmoothingEnabled = false; // без размытия!
+  sctx.fillStyle = '#000';
+  sctx.fillRect(0, 0, screen.width, screen.height);
+  sctx.drawImage(buffer, 0, 0, W, H, dx, dy, W * scale, H * scale);
+}
+
 // Отрисовка одного кадра в буфер
 function render() {
+  const now = performance.now();
+
+  // ---------- ЭКРАНЫ МЕНЮ ----------
+  if (scene !== 'game') {
+    // Позади меню виден тот же мрачный лес — только сильно затемнённый
+    background.draw(bctx, camera);
+    bctx.fillStyle = 'rgba(6, 8, 14, 0.72)';
+    bctx.fillRect(0, 0, W, H);
+
+    if (scene === 'title') drawTitle(bctx, menuIndex, now);
+    else if (scene === 'levels') drawLevelSelect(bctx, menuIndex, now);
+    else if (scene === 'settings') drawSettings(bctx, menuIndex, isMuted(), isMusicMuted(), now);
+    else if (scene === 'quit') drawQuit(bctx, player.coins);
+
+    blitToScreen();
+    return;
+  }
+
   // Мрачный лес в несколько слоёв (вместо простого неба)
   background.draw(bctx, camera);
-
-  const now = performance.now();
   level.drawDecor(bctx, camera, now); // домики в лесу
   level.draw(bctx, camera);
   for (const chest of chests) chest.draw(bctx, camera);
@@ -363,15 +484,7 @@ function render() {
 
   if (victory) drawVictoryScreen(bctx);
 
-  // --- Выводим буфер на экран с целочисленным масштабом ---
-  const scale = Math.max(1, Math.floor(Math.min(screen.width / W, screen.height / H)));
-  const dx = Math.floor((screen.width - W * scale) / 2);
-  const dy = Math.floor((screen.height - H * scale) / 2);
-
-  sctx.imageSmoothingEnabled = false; // без размытия!
-  sctx.fillStyle = '#000';
-  sctx.fillRect(0, 0, screen.width, screen.height);
-  sctx.drawImage(buffer, 0, 0, W, H, dx, dy, W * scale, H * scale);
+  blitToScreen();
 }
 
 // --- Игровой цикл с накопителем времени (fixed timestep) ---
