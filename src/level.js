@@ -51,6 +51,7 @@ export class Level {
     this.houses = [];       // декоративные домики
     this.bossSpawn = null;  // точка появления босса
     this.chestSpawns = [];  // сундуки с золотом
+    this.doors = [];        // двери домиков, куда можно зайти отдохнуть
 
     // Выход с уровня (дверь замка), заполняется меткой 'E'
     this.exit = null;
@@ -78,7 +79,11 @@ export class Level {
           ch = '.';
         } else if (ch === 'g') {
           // враг: тёмный рыцарь
-          this.enemySpawns.push({ col, row });
+          this.enemySpawns.push({ col, row, kind: 'knight' });
+          ch = '.';
+        } else if (ch === 'z') {
+          // враг: зомби
+          this.enemySpawns.push({ col, row, kind: 'zombie' });
           ch = '.';
         } else if (ch === 'G' || ch === 'V') {
           // привидение: 'G' вылетает снизу вверх, 'V' падает сверху вниз
@@ -91,6 +96,18 @@ export class Level {
         } else if (ch === 'c') {
           // сундук с золотом
           this.chestSpawns.push({ col, row });
+          ch = '.';
+        } else if (ch === 'D') {
+          // Жилой домик, в который можно зайти и отдохнуть (+1 сердце).
+          // Сам домик рисуется как обычный 'H', плюс запоминаем зону двери
+          this.houses.push({ x: col * T, bottom: (row + 1) * T, col, lit: true });
+          this.doors.push({
+            x: col * T + 26,        // дверь у правого края домика
+            y: (row + 1) * T - 19,
+            w: 12,
+            h: 19,
+            used: false,
+          });
           ch = '.';
         } else if (ch === 'H' || ch === 'R') {
           // домик: 'H' жилой (горит свет), 'R' заброшенный.
@@ -142,6 +159,37 @@ export class Level {
   isVineAt(col, row) {
     const ch = this.tileAt(col, row);
     return ch === '|' || ch === 'L';
+  }
+
+  // Вода: в ней медленно плывёшь, гравитация слабее
+  isWaterAt(col, row) {
+    return this.tileAt(col, row) === 'w';
+  }
+
+  // Лава: обжигает при касании
+  isLavaAt(col, row) {
+    return this.tileAt(col, row) === 'l';
+  }
+
+  // Стоит ли герой (или его середина) в воде
+  overlapsWater(box) {
+    const col = Math.floor((box.x + box.w / 2) / T);
+    const row = Math.floor((box.y + box.h * 0.6) / T);
+    return this.isWaterAt(col, row);
+  }
+
+  // Касается ли прямоугольник лавы
+  overlapsLava(box) {
+    const c0 = Math.floor(box.x / T);
+    const c1 = Math.floor((box.x + box.w - 0.01) / T);
+    const r0 = Math.floor(box.y / T);
+    const r1 = Math.floor((box.y + box.h - 0.01) / T);
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        if (this.isLavaAt(c, r)) return true;
+      }
+    }
+    return false;
   }
 
   // Пересекается ли прямоугольник героя с лианой
@@ -408,6 +456,45 @@ export class Level {
           ctx.fillStyle = COL_VINE_LEAF;
           ctx.fillRect(x + 2, y + 3, 4, 3);
           ctx.fillRect(x + 10, y + 10, 4, 3);
+        } else if (ch === 'w') {
+          // Вода: толща с волнами на поверхности
+          const surface = this.tileAt(col, row - 1) !== 'w';
+          ctx.fillStyle = '#1b4f72';
+          ctx.fillRect(x, y, T, T);
+          ctx.fillStyle = '#2e6f9e';
+          ctx.fillRect(x, y + 4, T, 3);
+          ctx.fillRect(x + 3, y + 10, T - 6, 2);
+          if (surface) {
+            // Рябь на поверхности медленно колышется
+            const t = performance.now() / 300;
+            ctx.fillStyle = '#54a0c8';
+            for (let i = 0; i < T; i += 4) {
+              const h = 1 + Math.round(1 + Math.sin(t + (col * T + i) / 7));
+              ctx.fillRect(x + i, y, 4, h);
+            }
+          }
+        } else if (ch === 'l') {
+          // Лава: раскалённая, с пузырями и свечением
+          const surface = this.tileAt(col, row - 1) !== 'l';
+          const t = performance.now() / 260;
+          ctx.fillStyle = '#8f1d07';
+          ctx.fillRect(x, y, T, T);
+          ctx.fillStyle = '#d9410f';
+          ctx.fillRect(x, y + 3, T, T - 3);
+          // Пузыри всплывают и лопаются
+          ctx.fillStyle = '#ffa32e';
+          for (let i = 2; i < T; i += 6) {
+            const bubble = (Math.sin(t + (col * 3 + i)) + 1) / 2;
+            const by = y + T - 2 - Math.round(bubble * (T - 5));
+            ctx.fillRect(x + i, by, 2, 2);
+          }
+          if (surface) {
+            ctx.fillStyle = '#ffd35c';
+            for (let i = 0; i < T; i += 4) {
+              const h = 1 + Math.round(1 + Math.sin(t * 1.6 + (col * T + i) / 5));
+              ctx.fillRect(x + i, y, 4, h);
+            }
+          }
         } else if (ch === 'L') {
           // Деревянная лестница: две тетивы и перекладины
           ctx.fillStyle = COL_WOOD_DARK;

@@ -33,6 +33,14 @@ export const PALETTE = {
   T: '#efe9d2', // клыки и когти
   U: '#4a3a28', // набедренная повязка
   K: '#160b0c', // чёрная обводка силуэта (как в AI-концепте)
+  // --- зомби ---
+  Z: '#5a6b47', // гниющая плоть
+  z: '#33402a', // плоть: тень и контур
+  q: '#748a58', // плоть: блик
+  J: '#c9d94a', // ядовито светящиеся глаза
+  j: '#6b1f1f', // раны и запёкшаяся кровь
+  D: '#4a4038', // истлевшие лохмотья
+  S: '#d8d2c0', // торчащие кости и зубы
   // --- привидение ---
   W: '#e8f1f5', // саван: светлое
   w: '#a9c2d0', // саван: тень
@@ -524,6 +532,102 @@ export const OGRE_SMASH = [
 export const OGRE_WALK_CYCLE = [
   { frame: OGRE_WALK, dy: 0 },
   { frame: OGRE_IDLE, dy: -1 },
+];
+
+// ---------- ЗОМБИ 16x24: гниющий мертвец с протянутой рукой ----------
+// Голова свёрнута набок, челюсть отвисла, из рёбер торчат кости.
+// Хромает: одна нога волочится, тело качается из стороны в сторону.
+
+// Опорная фаза: здоровая нога держит вес, тело выпрямлено
+export const ZOMBIE_WALK1 = [
+  '................',
+  '....zzzz........',
+  '...zZZZZz.......',
+  '..zZZZZZZz......',
+  '..zZJZZJZz......',
+  '..zZZZZZZz......',
+  '..zZZZZZZz......',
+  '...zZSSZz.......',
+  '....zZZz........',
+  '.zzZZZZZZzz.....',
+  'zDDZZjZZZDDzzz..',
+  'zDZZZZZZZZZZZZz.',
+  'zDZSZZZZSZDzzz..',
+  'zDZSZZZjSZDz....',
+  '.zZZZZZZZZz.....',
+  '.zDDDDDDDDz.....',
+  '..zDDDDDDz......',
+  '..zZZ..ZZz......',
+  '..zZ....Zz......',
+  '..zZ....Zz......',
+  '..zZ....Zz......',
+  '.zZZ....ZZz.....',
+  '.zSS....zZz.....',
+  '.zSS....zZz.....',
+];
+
+// Фаза волочения: тело кренится, больная нога тащится следом
+export const ZOMBIE_WALK2 = [
+  '................',
+  '....zzzz........',
+  '...zZZZZz.......',
+  '..zZZZZZZz......',
+  '..zZJZZJZz......',
+  '..zZZZZZZz......',
+  '..zZZZZZZz......',
+  '...zZSSZz.......',
+  '....zZZz........',
+  '.zzZZZZZZzz.....',
+  'zDDZZjZZZDDzzz..',
+  'zDZZZZZZZZZZZZz.',
+  'zDZSZZZZSZDzzz..',
+  'zDZSZZZjSZDz....',
+  '.zZZZZZZZZz.....',
+  '.zDDDDDDDDz.....',
+  '..zDDDDDDz......',
+  '..zZZZZZZz......',
+  '..zZ..zZZz......',
+  '..zZ...zZZz.....',
+  '.zZZ....zZZz....',
+  '.zSS.....zSSz...',
+  '.zSS.....zSSz...',
+  '................',
+];
+
+// Стоит на месте, покачиваясь
+export const ZOMBIE_IDLE = [
+  '................',
+  '....zzzz........',
+  '...zZZZZz.......',
+  '..zZZZZZZz......',
+  '..zZJZZJZz......',
+  '..zZZZZZZz......',
+  '..zZZZZZZz......',
+  '...zZSSZz.......',
+  '....zZZz........',
+  '.zzZZZZZZzz.....',
+  'zDDZZjZZZDDzzz..',
+  'zDZZZZZZZZZZZZz.',
+  'zDZSZZZZSZDzzz..',
+  'zDZSZZZjSZDz....',
+  '.zZZZZZZZZz.....',
+  '.zDDDDDDDDz.....',
+  '..zDDDDDDz......',
+  '..zZZ..ZZz......',
+  '..zZ....Zz......',
+  '..zZ....Zz......',
+  '..zZ....Zz......',
+  '..zSS...zZz.....',
+  '..zSS...zZz.....',
+  '................',
+];
+
+// Хромающий цикл: тело качается неровно — шаг, просадка, волочение
+export const ZOMBIE_WALK_CYCLE = [
+  { frame: ZOMBIE_WALK1, dy: 0 },
+  { frame: ZOMBIE_WALK1, dy: -1 },
+  { frame: ZOMBIE_WALK2, dy: 1 },
+  { frame: ZOMBIE_WALK2, dy: 1 },
 ];
 
 // ---------- ПРИВИДЕНИЕ 16x22: воющий призрак с рваным подолом ----------

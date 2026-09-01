@@ -97,19 +97,24 @@ export class Player {
       this.swingId++; // новый мах — можно снова задеть каждого врага
     }
 
+    // ---------- ВОДА ----------
+    // В воде тянет вниз слабее, плывём медленнее, а прыжок становится гребком
+    this.inWater = level.overlapsWater(this);
+
     // ---------- ГОРИЗОНТАЛЬНОЕ ДВИЖЕНИЕ ----------
     // Пока герой оглушён после урона, управление не работает — его откидывает
     const dir = this.stun > 0 ? 0
       : (Input.isDown('right') ? 1 : 0) - (Input.isDown('left') ? 1 : 0);
     const accel = this.onGround ? CONFIG.RUN_ACCEL : CONFIG.AIR_ACCEL;
     const decel = this.onGround ? CONFIG.RUN_DECEL : CONFIG.AIR_DECEL;
+    const runMax = this.inWater ? CONFIG.RUN_MAX * CONFIG.WATER_SPEED : CONFIG.RUN_MAX;
 
     if (dir !== 0) {
       this.facing = dir;
       this.vx += dir * accel * dt;
-      // не разгоняемся выше максимума
-      if (this.vx > CONFIG.RUN_MAX) this.vx = CONFIG.RUN_MAX;
-      if (this.vx < -CONFIG.RUN_MAX) this.vx = -CONFIG.RUN_MAX;
+      // не разгоняемся выше максимума (в воде он ниже)
+      if (this.vx > runMax) this.vx = runMax;
+      if (this.vx < -runMax) this.vx = -runMax;
     } else {
       // кнопки отпущены — плавно тормозим до нуля
       const brake = decel * dt;
@@ -127,7 +132,13 @@ export class Player {
     if (this.onGround) this.coyote = CONFIG.COYOTE_FRAMES;
     else if (this.coyote > 0) this.coyote--;
 
-    if (this.jumpBuffer > 0 && this.stun <= 0) {
+    if (this.inWater && this.jumpBuffer > 0 && this.stun <= 0) {
+      // В воде прыжок превращается в гребок — можно грести сколько угодно
+      this.vy = -CONFIG.SWIM_STROKE;
+      this.jumpBuffer = 0;
+      this.jumpHeld = false;
+      this.riding = null;
+    } else if (this.jumpBuffer > 0 && this.stun <= 0) {
       if (this.coyote > 0) {
         // Обычный прыжок с земли (или с платформы)
         this.vy = -CONFIG.JUMP_SPEED;
@@ -152,14 +163,24 @@ export class Player {
     if (this.vy >= 0) this.jumpHeld = false;
 
     // ---------- ГРАВИТАЦИЯ ----------
-    this.vy += CONFIG.GRAVITY * dt;
-    if (this.vy > CONFIG.FALL_MAX) this.vy = CONFIG.FALL_MAX;
+    // В воде тянет заметно слабее и погружаешься медленно
+    const gravity = this.inWater ? CONFIG.GRAVITY * CONFIG.WATER_GRAVITY : CONFIG.GRAVITY;
+    const fallMax = this.inWater ? CONFIG.WATER_FALL_MAX : CONFIG.FALL_MAX;
+    this.vy += gravity * dt;
+    if (this.vy > fallMax) this.vy = fallMax;
 
     // ---------- ДВИЖЕНИЕ С КОЛЛИЗИЯМИ ----------
     this.moveAndCollide(dt, level, platforms);
 
-    // На земле запас воздушных прыжков восстанавливается
-    if (this.onGround) this.airJumpsLeft = CONFIG.AIR_JUMPS;
+    // ---------- ЛАВА ОБЖИГАЕТ ----------
+    if (level.overlapsLava(this)) {
+      const fromX = this.x + this.w / 2 + this.facing * 8; // отбрасывает назад
+      this.hurt(fromX);
+      if (this.stun > 0) this.vy = -CONFIG.LAVA_DAMAGE_KNOCK * 0.6; // выбрасывает вверх
+    }
+
+    // На земле и в воде запас воздушных прыжков восстанавливается
+    if (this.onGround || this.inWater) this.airJumpsLeft = CONFIG.AIR_JUMPS;
 
     // ---------- АНИМАЦИЯ ХОДЬБЫ ----------
     // Таймер идёт, только когда бежим по земле; иначе сбрасывается

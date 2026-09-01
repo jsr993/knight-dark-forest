@@ -11,7 +11,7 @@ import { Input } from './input.js';
 import { Level } from './level.js';
 import { LEVEL1 } from './levels/level1.js';
 import { Player } from './entities/player.js';
-import { Enemy, Ghost } from './entities/enemies.js';
+import { Enemy, Ghost, Zombie } from './entities/enemies.js';
 import { Boss } from './entities/boss.js';
 import { Chest } from './entities/pickups.js';
 import { MovingPlatform } from './entities/traps.js';
@@ -46,10 +46,12 @@ const level = new Level(LEVEL1);
 const player = new Player(level.spawnX, level.spawnY);
 // Движущиеся платформы из меток 'm' и 'M' на карте
 const platforms = level.platformSpawns.map((s) => new MovingPlatform(s.col, s.row, s.axis));
-// Враги из меток 'g'
-const enemies = level.enemySpawns.map(
-  (s) => new Enemy(s.col * CONFIG.TILE + 2, s.row * CONFIG.TILE + CONFIG.TILE - 20),
-);
+// Враги: 'g' — тёмные рыцари, 'z' — зомби
+const enemies = level.enemySpawns.map((s) => {
+  const x = s.col * CONFIG.TILE + 2;
+  const y = s.row * CONFIG.TILE + CONFIG.TILE - 20;
+  return s.kind === 'zombie' ? new Zombie(x, y) : new Enemy(x, y);
+});
 // Привидения из меток 'G' (снизу) и 'V' (сверху)
 const ghosts = level.ghostSpawns.map((s) => new Ghost(s.col, s.row, s.fromBelow));
 // Босс из метки 'B'
@@ -90,6 +92,35 @@ function resetEnemies() {
 // заново (сюда позже встанет переход на уровень 2).
 let entering = null; // null или { phase, timer }
 let fadeAlpha = 0;   // затемнение экрана (0 — нет, 1 — чёрный)
+
+// ---------- ЗАХОД В ДОМИК ----------
+// Герой входит в дверь, отдыхает внутри и выходит с восстановленным сердцем
+let visiting = null; // null или { door, phase, timer }
+
+function updateVisiting(dt) {
+  player.invuln = 1;
+  const doorCenter = visiting.door.x + visiting.door.w / 2;
+  const playerCenter = player.x + player.w / 2;
+
+  if (visiting.phase === 'walk') {
+    player.facing = doorCenter > playerCenter ? 1 : -1;
+    player.x += player.facing * 45 * dt;
+    if (Math.abs(doorCenter - playerCenter) < 2) {
+      player.hidden = true;              // вошёл внутрь
+      visiting.phase = 'inside';
+      visiting.timer = 1.3;
+    }
+  } else if (visiting.phase === 'inside') {
+    visiting.timer -= dt;
+    if (visiting.timer <= 0) {
+      // Отдохнул: сердце восстановлено, хозяева накормили
+      if (player.hearts < CONFIG.PLAYER_HEARTS) player.hearts++;
+      player.hidden = false;
+      visiting.door.used = true;
+      visiting = null;
+    }
+  }
+}
 
 function updateEntering(dt) {
   player.invuln = 1; // в сценке герой неуязвим
@@ -143,8 +174,26 @@ function update(dt) {
     Input.endFrame();
     return;
   }
+  if (visiting) {
+    updateVisiting(dt);
+    camera.update(player, dt);
+    Input.endFrame();
+    return;
+  }
 
   player.update(dt, level, platforms);
+
+  // Подошли к двери жилого домика — заходим отдохнуть (один раз)
+  for (const door of level.doors) {
+    if (door.used || !player.onGround) continue;
+    if (overlaps(player, door)) {
+      visiting = { door, phase: 'walk', timer: 0 };
+      player.vx = 0;
+      player.attackTimer = 0;
+      Input.endFrame();
+      return;
+    }
+  }
 
   // Смерть героя возрождает всех врагов на их местах
   if (player.justDied) {

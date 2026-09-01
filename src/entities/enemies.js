@@ -15,6 +15,8 @@ import {
   DARK_CROUCH,
   DARK_WALK_CYCLE,
   GHOST_FRAMES,
+  ZOMBIE_IDLE,
+  ZOMBIE_WALK_CYCLE,
 } from '../sprites.js';
 
 const T = CONFIG.TILE;
@@ -355,6 +357,136 @@ export class Enemy {
       // яркая точка самого глаза
       ctx.globalAlpha = angry ? 1 : 0.55 + 0.35 * pulse;
       ctx.fillRect(ex, ey, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ============================================================
+// ЗОМБИ.
+// Гниющий мертвец: еле ковыляет, хромая и заваливаясь набок,
+// но прёт на героя без остановки и живуч — три удара мечом.
+// Не умеет рывка и прыжка, зато чует героя издалека.
+// Устроен на той же физике, что и тёмный рыцарь (класс Enemy),
+// но с другими мозгами и внешностью.
+// ============================================================
+export class Zombie extends Enemy {
+  reset() {
+    super.reset();
+    this.hp = CONFIG.ZOMBIE_HP;
+    this.moan = Math.random() * CONFIG.ZOMBIE_MOAN_PERIOD; // фаза «стона»
+  }
+
+  update(dt, level, player) {
+    if (this.dead) return;
+
+    if (this.dying > 0) {
+      this.dying -= dt;
+      if (this.dying <= 0) this.dead = true;
+      return;
+    }
+    if (this.flash > 0) this.flash -= dt;
+    this.moan += dt;
+
+    // ---------- МОЗГИ: просто бредёт на героя ----------
+    const dx = (player.x + player.w / 2) - (this.x + this.w / 2);
+    const dy = (player.y + player.h) - (this.y + this.h);
+    this.chasing = Math.abs(dx) < CONFIG.ZOMBIE_SIGHT && Math.abs(dy) < 48;
+
+    let speed = CONFIG.ZOMBIE_PATROL_SPEED;
+    if (this.chasing) {
+      this.dir = dx > 0 ? 1 : -1;
+      speed = CONFIG.ZOMBIE_CHASE_SPEED;
+    }
+
+    // Не сваливается с обрыва
+    if (this.onGround) {
+      const aheadX = this.dir > 0 ? this.x + this.w + 1 : this.x - 1;
+      const aheadCol = Math.floor(aheadX / T);
+      const footRow = Math.floor((this.y + this.h + 1) / T);
+      const groundAhead = level.isSolidAt(aheadCol, footRow) || level.isOneWayAt(aheadCol, footRow);
+      if (!groundAhead) {
+        if (this.chasing) speed = 0;
+        else this.dir *= -1;
+      }
+    }
+
+    const vx = this.dir * speed + this.knock;
+    if (this.knock > 0) this.knock = Math.max(0, this.knock - 400 * dt);
+    else if (this.knock < 0) this.knock = Math.min(0, this.knock + 400 * dt);
+
+    this.vy += CONFIG.GRAVITY * dt;
+    if (this.vy > CONFIG.FALL_MAX) this.vy = CONFIG.FALL_MAX;
+
+    const hitWall = this.moveAndCollide(dt, level, vx);
+    if (hitWall && !this.chasing) this.dir *= -1;
+
+    // Хромота идёт медленно и не зависит от скорости
+    this.animTime = (this.onGround && Math.abs(vx) > 1) ? this.animTime + dt : 0;
+
+    // Касание героя
+    const touching =
+      this.x < player.x + player.w && this.x + this.w > player.x &&
+      this.y < player.y + player.h && this.y + this.h > player.y;
+    if (touching) player.hurt(this.x + this.w / 2);
+  }
+
+  hurt(dmg, fromX) {
+    if (this.dying > 0 || this.dead) return;
+    this.hp -= dmg;
+    this.flash = 0.12;
+    // Мертвеца почти не отбрасывает — он не чувствует удара
+    this.knock = (this.x + this.w / 2) < fromX ? -35 : 35;
+    if (this.hp <= 0) this.dying = 0.5; // оседает медленнее рыцаря
+  }
+
+  draw(ctx, camera) {
+    if (this.dead) return;
+    const x = Math.round(this.x - camera.x);
+    const y = Math.round(this.y - camera.y);
+
+    // Смерть: медленно оседает в кучу
+    if (this.dying > 0) {
+      const k = this.dying / 0.5;
+      const h = Math.max(3, Math.round(this.h * k));
+      ctx.fillStyle = '#3d4a30';
+      ctx.fillRect(x - 1, y + this.h - h, this.w + 2, h);
+      return;
+    }
+
+    const sx = x - 2;
+    let sy = y - 4;
+
+    let frame = ZOMBIE_IDLE;
+    if (this.animTime > 0) {
+      const step = ZOMBIE_WALK_CYCLE[
+        Math.floor(this.animTime / CONFIG.ZOMBIE_LIMP_TIME) % ZOMBIE_WALK_CYCLE.length
+      ];
+      frame = step.frame;
+      sy += step.dy;
+    }
+
+    if (this.flash > 0) {
+      ctx.fillStyle = '#f1f1f1';
+      ctx.fillRect(x, y, this.w, this.h);
+      return;
+    }
+
+    drawSprite(ctx, frame, sx, sy, this.dir < 0);
+
+    // ---------- СВЕЧЕНИЕ ГЛАЗ ----------
+    // Тускло тлеют, а на «стоне» вспыхивают ярче
+    const moanPhase = (this.moan % CONFIG.ZOMBIE_MOAN_PERIOD) / CONFIG.ZOMBIE_MOAN_PERIOD;
+    const flare = moanPhase < 0.18 ? 1 : 0.4 + 0.25 * Math.sin(this.moan * 2);
+    // Глаза стоят на колонках 4 и 7 спрайта, строка 4 (при зеркале — 8 и 11)
+    const eyeCols = this.dir > 0 ? [4, 7] : [8, 11];
+    const ey = sy + 4;
+    ctx.fillStyle = '#c9d94a';
+    for (const ec of eyeCols) {
+      ctx.globalAlpha = 0.28 * flare;
+      ctx.fillRect(sx + ec - 1, ey - 1, 3, 3);
+      ctx.globalAlpha = Math.min(1, 0.6 + 0.4 * flare);
+      ctx.fillRect(sx + ec, ey, 1, 1);
     }
     ctx.globalAlpha = 1;
   }
