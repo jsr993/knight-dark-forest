@@ -144,8 +144,12 @@ export class Boss {
       this.hitThisSmash = true;
       player.hurt(this.x + this.w / 2);
     }
-    // 2) Просто врезался в героя тушей
-    if (overlaps(this, player)) player.hurt(this.x + this.w / 2);
+    // 2) Врезался в героя тушей — но только пока идёт или замахивается.
+    // Пока он вытаскивает молот из земли (recover), тушей он не бьёт:
+    // это честное окно, чтобы подойти вплотную и рубить его самому.
+    if (this.state !== 'recover' && overlaps(this, player)) {
+      player.hurt(this.x + this.w / 2);
+    }
   }
 
   // Зона удара молота (только когда он уже обрушился вниз)
