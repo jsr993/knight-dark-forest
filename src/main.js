@@ -25,7 +25,7 @@ import {
 import { drawTextCentered } from './font.js';
 import {
   MAIN_MENU, LEVELS,
-  drawTitle, drawLevelSelect, drawSettings, drawQuit,
+  drawTitle, drawLevelSelect, drawControls, drawSettings, drawQuit,
 } from './scenes.js';
 
 const W = CONFIG.SCREEN_W;
@@ -276,8 +276,12 @@ function updateMenu() {
   if (scene === 'title' && enter) {
     if (menuIndex === 0) { Sfx.menuSelect(); startLevel(); }
     else if (menuIndex === 1) { Sfx.menuSelect(); scene = 'levels'; menuIndex = 0; }
-    else if (menuIndex === 2) { Sfx.menuSelect(); scene = 'settings'; menuIndex = 0; }
+    else if (menuIndex === 2) { Sfx.menuSelect(); scene = 'controls'; }
+    else if (menuIndex === 3) { Sfx.menuSelect(); scene = 'settings'; menuIndex = 0; }
     else { Sfx.menuSelect(); scene = 'quit'; }
+  } else if (scene === 'controls') {
+    // Экран управления просто читают и выходят
+    if (enter || back) { Sfx.menuBack(); scene = 'title'; menuIndex = 2; }
   } else if (scene === 'levels') {
     if (enter) {
       if (LEVELS[menuIndex].unlocked) { Sfx.menuSelect(); startLevel(); }
@@ -288,9 +292,9 @@ function updateMenu() {
     if (enter) {
       if (menuIndex === 0) { toggleMute(); Sfx.menuSelect(); }
       else if (menuIndex === 1) { toggleMusic(); Sfx.menuSelect(); }
-      else { Sfx.menuBack(); scene = 'title'; menuIndex = 2; }
+      else { Sfx.menuBack(); scene = 'title'; menuIndex = 3; }
     }
-    if (back) { Sfx.menuBack(); scene = 'title'; menuIndex = 2; }
+    if (back) { Sfx.menuBack(); scene = 'title'; menuIndex = 3; }
   } else if (scene === 'quit') {
     if (enter || back) { Sfx.menuBack(); scene = 'title'; menuIndex = 0; }
   }
@@ -454,6 +458,7 @@ function render() {
 
     if (scene === 'title') drawTitle(bctx, menuIndex, now);
     else if (scene === 'levels') drawLevelSelect(bctx, menuIndex, now);
+    else if (scene === 'controls') drawControls(bctx);
     else if (scene === 'settings') drawSettings(bctx, menuIndex, isMuted(), isMusicMuted(), now);
     else if (scene === 'quit') drawQuit(bctx, player.coins);
 

@@ -11,7 +11,7 @@ const W = CONFIG.SCREEN_W;
 const H = CONFIG.SCREEN_H;
 
 // Пункты главного меню
-export const MAIN_MENU = ['ИГРАТЬ', 'ВЫБОР УРОВНЯ', 'ПАРАМЕТРЫ', 'ВЫХОД'];
+export const MAIN_MENU = ['ИГРАТЬ', 'ВЫБОР УРОВНЯ', 'УПРАВЛЕНИЕ', 'ПАРАМЕТРЫ', 'ВЫХОД'];
 
 // Уровни: пока сделан только первый, остальные закрыты
 export const LEVELS = [
@@ -92,6 +92,84 @@ export function drawLevelSelect(ctx, selected, time) {
 
   drawTextCentered(ctx, 'ОТКРЫТ ТОЛЬКО ПЕРВЫЙ УРОВЕНЬ', W, H - 30, '#4a5568', 1);
   drawTextCentered(ctx, 'ESC - НАЗАД', W, H - 16, '#4a5568', 1);
+  drawFrame(ctx);
+}
+
+// Пиксельные стрелки 5x5, нарисованные по клеточкам
+const ARROWS = {
+  left: ['..X..', '.X...', 'XXXXX', '.X...', '..X..'],
+  right: ['..X..', '...X.', 'XXXXX', '...X.', '..X..'],
+  up: ['..X..', '.XXX.', 'X.X.X', '..X..', '..X..'],
+  down: ['..X..', '..X..', 'X.X.X', '.XXX.', '..X..'],
+};
+
+function drawArrow(ctx, x, y, dir, color = '#f2c14e') {
+  ctx.fillStyle = color;
+  const m = ARROWS[dir];
+  for (let row = 0; row < 5; row++) {
+    for (let col = 0; col < 5; col++) {
+      if (m[row][col] === 'X') ctx.fillRect(x + col, y + row, 1, 1);
+    }
+  }
+}
+
+// Клавиша в рамочке — чтобы было видно, что это кнопка
+function drawKey(ctx, label, x, y) {
+  const w = textWidth(label, 1) + 6;
+  ctx.fillStyle = '#2a3546';
+  ctx.fillRect(x, y - 2, w, 11);
+  ctx.fillStyle = '#4a5568';
+  ctx.fillRect(x, y - 2, w, 1);
+  ctx.fillRect(x, y + 8, w, 1);
+  drawText(ctx, label, x + 3, y + 1, '#e8f1f5', 1);
+  return w;
+}
+
+// ---------- УПРАВЛЕНИЕ ----------
+export function drawControls(ctx) {
+  drawTextCentered(ctx, 'УПРАВЛЕНИЕ', W, 12, '#f2c14e', 2);
+
+  let y = 38;
+  const step = 15;
+  const keyX = 26;      // колонка с клавишами
+  const textX = 108;    // колонка с описанием
+
+  // Бег: стрелки влево-вправо
+  drawArrow(ctx, keyX + 6, y + 3, 'left');
+  drawArrow(ctx, keyX + 16, y + 3, 'right');
+  drawText(ctx, 'БЕГ ВЛЕВО И ВПРАВО', textX, y, '#c8d3e0', 1);
+  y += step;
+
+  // Лестницы: стрелки вверх-вниз
+  drawArrow(ctx, keyX + 6, y + 3, 'up');
+  drawArrow(ctx, keyX + 16, y + 3, 'down');
+  drawText(ctx, 'ЛЕСТНИЦЫ И ЛИАНЫ', textX, y, '#c8d3e0', 1);
+  y += step;
+
+  drawKey(ctx, 'ПРОБЕЛ', keyX, y);
+  drawText(ctx, 'ПРЫЖОК', textX, y + 1, '#c8d3e0', 1);
+  y += step;
+
+  drawKey(ctx, 'ПРОБЕЛ 2Х', keyX, y);
+  drawText(ctx, 'ДВОЙНОЙ ПРЫЖОК', textX, y + 1, '#c8d3e0', 1);
+  y += step;
+
+  drawKey(ctx, 'X', keyX, y);
+  drawText(ctx, 'УДАР МЕЧОМ', textX, y + 1, '#c8d3e0', 1);
+  y += step;
+
+  drawKey(ctx, 'N', keyX, y);
+  drawText(ctx, 'БЫСТРО УБРАТЬ МУЗЫКУ', textX, y + 1, '#c8d3e0', 1);
+  y += step;
+
+  drawKey(ctx, 'M', keyX, y);
+  drawText(ctx, 'УБРАТЬ ВЕСЬ ЗВУК', textX, y + 1, '#c8d3e0', 1);
+  y += step;
+
+  drawKey(ctx, 'ESC', keyX, y);
+  drawText(ctx, 'ВЫЙТИ В МЕНЮ', textX, y + 1, '#c8d3e0', 1);
+
+  drawTextCentered(ctx, 'ESC - НАЗАД', W, H - 14, '#4a5568', 1);
   drawFrame(ctx);
 }
 
