@@ -373,6 +373,67 @@ export class Background {
       ctx.fillRect(ax + aw + 11, top - 6, 24, 6);
     }
 
+    // --- Украшения зала: гобелены, картины, люстры ---
+    for (let i = 0; i < 5; i++) {
+      const ax = 20 + i * 96;
+      const вид = i % 3;
+
+      if (вид === 0) {
+        // Бордовый гобелен, расшитый золотом
+        const gx = ax + 54;
+        ctx.fillStyle = '#4a1420';
+        ctx.fillRect(gx, 46, 22, 56);
+        ctx.fillStyle = '#5e1a28';
+        for (let s = 0; s < 22; s += 5) ctx.fillRect(gx + s, 46, 3, 56);
+        ctx.fillStyle = '#7d6020';
+        ctx.fillRect(gx, 46, 22, 2);
+        ctx.fillRect(gx, 100, 22, 2);
+        // Вышитый крест-герб посередине
+        ctx.fillStyle = '#8a6a2a';
+        ctx.fillRect(gx + 10, 60, 2, 20);
+        ctx.fillRect(gx + 6, 66, 10, 2);
+        // Нижняя бахрома
+        for (let s = 1; s < 22; s += 4) ctx.fillRect(gx + s, 102, 1, 3);
+      } else if (вид === 1) {
+        // Большая картина в тяжёлой раме
+        const px = ax + 50;
+        ctx.fillStyle = '#5a4520';
+        ctx.fillRect(px, 50, 32, 38);
+        ctx.fillStyle = '#6b5428';
+        ctx.fillRect(px, 50, 32, 2);
+        ctx.fillStyle = '#171b22';
+        ctx.fillRect(px + 3, 53, 26, 32);
+        // Смутный портрет: силуэт в плаще
+        ctx.fillStyle = '#262c38';
+        ctx.fillRect(px + 10, 62, 12, 23);
+        ctx.fillStyle = '#313a48';
+        ctx.fillRect(px + 13, 57, 6, 6);
+      } else {
+        // Люстра на цепи
+        const lx = ax + 62;
+        ctx.fillStyle = '#2f343d';
+        for (let y = 20; y < 44; y += 3) ctx.fillRect(lx, y, 1, 2);
+        ctx.fillStyle = '#6b5420';
+        ctx.fillRect(lx - 11, 44, 23, 2);
+        ctx.fillRect(lx - 7, 50, 15, 2);
+        ctx.fillStyle = '#5a4518';
+        ctx.fillRect(lx - 11, 46, 1, 5);
+        ctx.fillRect(lx + 11, 46, 1, 5);
+        // Огоньки свечей — единственные тёплые точки в сумраке
+        ctx.fillStyle = '#8a6a2a';
+        for (let s = -9; s <= 9; s += 6) ctx.fillRect(lx + s, 41, 1, 3);
+      }
+    }
+
+    // Ряд узких бойниц под сводом
+    for (let i = 0; i < 8; i++) {
+      const sx = 34 + i * 58;
+      ctx.fillStyle = '#10131a';
+      ctx.fillRect(sx, 20, 6, 20);
+      ctx.fillStyle = '#1f2a38';
+      ctx.fillRect(sx + 1, 22, 4, 14);
+    }
+
     // Свисающая паутина по углам сводов
     ctx.fillStyle = '#2f343d';
     for (let i = 0; i < 10; i++) {

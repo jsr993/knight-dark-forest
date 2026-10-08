@@ -23,9 +23,10 @@ import {
   initAudio, toggleMute, isMuted, toggleMusic, isMusicMuted,
   playMusic, stopMusic, playFanfare, audioState, Sfx,
 } from './audio.js';
-import { drawTextCentered } from './font.js';
+import { drawText, drawTextCentered } from './font.js';
+import { drawRoom, drawRoomHint } from './rooms.js';
 import {
-  MAIN_MENU, LEVELS, unlockLevels,
+  MAIN_MENU, LEVELS, unlockLevels, ТОВАРЫ, drawShop,
   drawTitle, drawLevelSelect, drawControls, drawSettings, drawQuit, drawDeath,
 } from './scenes.js';
 
@@ -124,8 +125,14 @@ window.__game = {
   get boss() { return boss; },
   get chests() { return chests; },
   getCoins: () => coins,
-  getState: () => ({ scene, levelIndex, entering, visiting, victory, dying, fadeAlpha }),
+  getState: () => ({ scene, levelIndex, entering, visiting, victory, dying, fadeAlpha, room, shop }),
   startLevel: (n) => startLevel(n),   // для ручной проверки из консоли
+  openShop: () => { shop = { index: 0, сообщение: '', таймерСообщения: 0 }; },
+  openRoom: (kind) => {
+    const дверь = level.rooms.find((r) => r.kind === kind) || level.rooms[0] || {};
+    room = { kind, door: дверь, chestsTaken: false };
+  },
+  closeOverlays: () => { shop = null; room = null; },
   audioState, Sfx,
 };
 
@@ -178,13 +185,17 @@ function saveProgress(count) {
   try { localStorage.setItem(PROGRESS_KEY, String(unlocked)); } catch (e) { /* не страшно */ }
 }
 
-// Начать уровень заново с чистого листа
-function startLevel(n = 0) {
+// Начать уровень заново с чистого листа.
+// Золото переносится, когда герой переходит на следующий уровень:
+// на него он потом покупает у торговца в замке
+function startLevel(n = 0, сохранитьЗолото = false) {
   fadeAlpha = 0;
   victory = false;
   dying = false;
   levelTime = 0;
-  player.coins = 0;
+  if (!сохранитьЗолото) player.coins = 0;
+  room = null;              // на всякий случай гасим открытые окна
+  shop = null;
   entering = null;
   visiting = null;
   buildWorld(n);          // собираем уровень заново: карта, враги, сундуки
@@ -196,6 +207,66 @@ function startLevel(n = 0) {
 // Огр повержен? Пока нет — костёр не разжечь и отдыхать нельзя
 function bossDefeated() {
   return !boss || boss.dead;
+}
+
+// ---------- ЛАВКА ТОРГОВЦА ----------
+// Подошёл к торговцу — открывается список товара.
+// Покупается за золото, собранное по всей игре
+let shop = null;      // null или { index, сообщение, таймерСообщения }
+
+function updateShop(dt) {
+  if (shop.таймерСообщения > 0) shop.таймерСообщения -= dt;
+
+  if (Input.wasPressed('up')) { shop.index = (shop.index + ТОВАРЫ.length - 1) % ТОВАРЫ.length; Sfx.menuMove(); }
+  if (Input.wasPressed('down')) { shop.index = (shop.index + 1) % ТОВАРЫ.length; Sfx.menuMove(); }
+  if (Input.wasPressed('back')) { shop = null; Sfx.menuBack(); return; }
+
+  if (Input.wasPressed('start') || Input.wasPressed('attack')) {
+    const товар = ТОВАРЫ[shop.index];
+    if (товар.name === 'УЙТИ') { shop = null; Sfx.menuBack(); return; }
+    if (player.coins < товар.price) {
+      shop.сообщение = 'НЕ ХВАТАЕТ ЗОЛОТА';
+      shop.таймерСообщения = 1.6;
+      Sfx.menuLocked();
+      return;
+    }
+    if (player.hearts >= CONFIG.PLAYER_HEARTS) {
+      shop.сообщение = 'ЗДОРОВЬЕ И ТАК ПОЛНОЕ';
+      shop.таймерСообщения = 1.6;
+      Sfx.menuLocked();
+      return;
+    }
+    player.coins -= товар.price;
+    if (товар.name === 'СЕРДЦЕ') player.hearts = Math.min(CONFIG.PLAYER_HEARTS, player.hearts + 1);
+    else player.hearts = CONFIG.PLAYER_HEARTS;
+    shop.сообщение = 'БЛАГОДАРЮ ЗА ПОКУПКУ';
+    shop.таймерСообщения = 1.6;
+    Sfx.heal();
+  }
+}
+
+// ---------- КОМНАТЫ ЗАМКА ----------
+// Герой вошёл в дверь — экран целиком занимает интерьер.
+// Сундуки комнаты при этом «выдаются» разом, как награда за находку
+let room = null;  // null или { kind, chestsTaken }
+
+function updateRoom() {
+  // Выйти можно по Esc или «вниз»
+  if (Input.wasPressed('back') || Input.wasPressed('down')) {
+    Sfx.doorCreak();
+    room = null;
+    player.invuln = CONFIG.HURT_INVULN; // чуть защиты на выходе
+    return;
+  }
+  // Забрать сундук комнаты — один раз за визит в уровень
+  if (!room.chestsTaken && Input.wasPressed('attack')) {
+    room.chestsTaken = true;
+    room.door.looted = true;
+    player.coins += CONFIG.ROOM_TREASURE;
+    Sfx.chestHit();
+    Sfx.coinPop();
+    Sfx.coin();
+  }
 }
 
 // ---------- ЗАХОД В ДОМИК ----------
@@ -293,7 +364,7 @@ function updateVictory(dt) {
   if (victoryTimer > 1.2 && Input.wasPressed('start')) {
     const следующий = levelIndex + 1;
     if (следующий < LEVEL_MAPS.length) {
-      startLevel(следующий);   // впереди ещё один уровень
+      startLevel(следующий, true);   // впереди ещё один уровень, золото берём с собой
     } else {
       // Игра пройдена целиком — возвращаемся в меню
       victory = false;
@@ -312,6 +383,7 @@ function updateVictory(dt) {
 
 // ---------- МУЗЫКА И ЗВУКОВАЯ АТМОСФЕРА ----------
 let fireTimer = 0; // отсчёт до следующего щелчка поленьев в костре
+let spookTimer = 3;  // отсчёт до следующего звона парящих предметов
 
 function updateAudio(dt) {
   // M — выключить весь звук, N — только мелодию (звуки боя останутся)
@@ -322,6 +394,18 @@ function updateAudio(dt) {
   const nearBoss = boss && !boss.dead
     && Math.abs((player.x + player.w / 2) - (boss.x + boss.w / 2)) < 220;
   playMusic(nearBoss ? 'boss' : 'forest');
+
+  // Парящие предметы изредка звенят, когда герой проходит мимо
+  if (level.spooks.length) {
+    spookTimer -= dt;
+    if (spookTimer <= 0) {
+      spookTimer = 4 + Math.random() * 5;
+      const рядом = level.spooks.find(
+        (s) => Math.abs(s.col * CONFIG.TILE - player.x) < 110,
+      );
+      if (рядом) Sfx.spook();
+    }
+  }
 
   // Костёр потрескивает, когда герой рядом — чем ближе, тем чаще
   if (level.exit) {
@@ -399,8 +483,10 @@ function update(dt) {
     return;
   }
 
-  // Esc в игре — выйти в главное меню
-  if (Input.wasPressed('back')) {
+  // Esc в игре — выйти в главное меню.
+  // Но если открыта комната или лавка, Esc сначала закрывает её:
+  // этим занимаются updateRoom и updateShop ниже
+  if (!room && !shop && Input.wasPressed('back')) {
     scene = 'title';
     menuIndex = 0;
     Sfx.menuBack();
@@ -434,6 +520,16 @@ function update(dt) {
     Input.endFrame();
     return;
   }
+  if (room) {
+    updateRoom();
+    Input.endFrame();
+    return;
+  }
+  if (shop) {
+    updateShop(dt);
+    Input.endFrame();
+    return;
+  }
   if (visiting) {
     updateVisiting(dt);
     camera.update(player, dt);
@@ -460,6 +556,28 @@ function update(dt) {
     dying = true;
     dyingTimer = 0;
     stopMusic();
+    Input.endFrame();
+    return;
+  }
+
+  // Вошёл в дверь комнаты замка — открывается интерьер
+  for (const r of level.rooms) {
+    if (!player.onGround) continue;
+    if (overlaps(player, r)) {
+      room = { kind: r.kind, door: r, chestsTaken: !!r.looted };
+      player.vx = 0;
+      player.attackTimer = 0;
+      Sfx.doorCreak();
+      Input.endFrame();
+      return;
+    }
+  }
+
+  // Подошёл к торговцу — открывается лавка
+  if (level.merchant && player.onGround && overlaps(player, level.merchant)) {
+    shop = { index: 0, сообщение: '', таймерСообщения: 0 };
+    player.vx = 0;
+    Sfx.menuSelect();
     Input.endFrame();
     return;
   }
@@ -587,10 +705,25 @@ function render() {
     return;
   }
 
+  // Герой внутри комнаты замка — показываем только интерьер
+  if (room) {
+    drawRoom(bctx, room.kind, now);
+    if (!room.chestsTaken) {
+      drawTextCentered(bctx, "X - ОТКРЫТЬ СУНДУК", W, H - 28, "#f2c14e", 1);
+    }
+    drawRoomHint(bctx);
+    drawHUD(bctx, player, isMuted(), isMusicMuted());
+    blitToScreen();
+    return;
+  }
+
   // Мрачный лес в несколько слоёв (вместо простого неба)
   background.draw(bctx, camera);
   level.drawDecor(bctx, camera, now); // домики в лесу
   level.draw(bctx, camera);
+  level.drawRoomDoors(bctx, camera, now);
+  level.drawMerchant(bctx, camera, now);
+  level.drawSpooks(bctx, camera, now);
   level.drawTorches(bctx, camera, now);
   level.drawCheckpoints(bctx, camera, now);
   for (const chest of chests) chest.draw(bctx, camera);
@@ -610,6 +743,7 @@ function render() {
     bctx.fillRect(0, 0, W, H);
   }
 
+  if (shop) drawShop(bctx, shop, player.coins);
   if (victory) drawVictoryScreen(bctx);
   if (dying) {
     bctx.fillStyle = 'rgba(10, 4, 6, 0.78)';

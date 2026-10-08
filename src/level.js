@@ -63,6 +63,9 @@ export class Level {
     this.doors = [];        // двери домиков, куда можно зайти отдохнуть
     this.checkpoints = [];  // флаги-чекпоинты: тут герой возрождается после смерти
     this.torches = [];      // настенные факелы (освещают залы замка)
+    this.rooms = [];        // двери в комнаты замка (гостиная, спальня)
+    this.merchant = null;   // торговец, продающий за монеты
+    this.spooks = [];       // парящие предметы, которые пугают
 
     // Выход с уровня (дверь замка), заполняется меткой 'E'
     this.exit = null;
@@ -107,6 +110,25 @@ export class Level {
         } else if (ch === 'c') {
           // сундук с золотом
           this.chestSpawns.push({ col, row });
+          ch = '.';
+        } else if (ch === 'Q' || ch === 'Y') {
+          // Дверь в комнату: 'Q' — гостиная, 'Y' — спальня.
+          // Зайти можно сколько угодно раз, внутри стоят сундуки
+          this.rooms.push({
+            kind: ch === 'Q' ? 'hall' : 'bedroom',
+            x: col * T,
+            y: (row + 1) * T - 24,
+            w: T,
+            h: 24,
+          });
+          ch = '.';
+        } else if (ch === 'S') {
+          // Торговец: продаёт полезное за собранное золото
+          this.merchant = { x: col * T, y: (row + 1) * T - 24, w: T + 8, h: 24 };
+          ch = '.';
+        } else if (ch === 'J') {
+          // Парящий предмет: левитирует и иногда пугает звуком
+          this.spooks.push({ col, row, seed: col * 13 + row });
           ch = '.';
         } else if (ch === 'T') {
           // Факел на стене: горит и освещает зал
@@ -270,14 +292,205 @@ export class Level {
       ctx.fillRect(x + 3, y + dy, 9, 1);
     }
 
-    // Верхняя кромка пола: мох вместо травы
+    const MOSS_LIGHT = '#567d4a';
+    const MOSS_DARK = '#2c4529';
+
+    // Верхняя кромка пола: густой мох, местами с кустиками травы
     if (openAbove) {
       ctx.fillStyle = LIGHT;
       ctx.fillRect(x, y, T, 2);
-      ctx.fillStyle = MOSS;
+      // Плотная моховая подушка
+      ctx.fillStyle = MOSS_DARK;
       for (let i = 0; i < T; i += 3) {
-        if (rnd(20 + i) > 0.45) ctx.fillRect(x + i, y, 2, 1 + Math.round(rnd(30 + i) * 2));
+        if (rnd(20 + i) > 0.5) {
+          const h = 1 + Math.round(rnd(30 + i) * 2);
+          ctx.fillRect(x + i, y, 2, h);
+        }
       }
+      // Светлые пряди поверх
+      ctx.fillStyle = MOSS;
+      for (let i = 1; i < T; i += 6) {
+        if (rnd(40 + i) > 0.65) ctx.fillRect(x + i, y, 1, 2);
+      }
+      // Редкие травинки, проросшие сквозь камень
+      if (rnd(60) > 0.82) {
+        const gx = x + 2 + Math.floor(rnd(61) * 11);
+        ctx.fillStyle = MOSS_LIGHT;
+        ctx.fillRect(gx, y - 3, 1, 3);
+        ctx.fillRect(gx + 2, y - 2, 1, 2);
+        ctx.fillStyle = MOSS;
+        ctx.fillRect(gx + 1, y - 4, 1, 4);
+      }
+    }
+
+    // Мох ползёт и по бокам блоков, если рядом пустота
+    const openLeft = !this.isSolidAt(col - 1, row);
+    const openRight = !this.isSolidAt(col + 1, row);
+    if (openLeft && rnd(70) > 0.45) {
+      ctx.fillStyle = MOSS_DARK;
+      ctx.fillRect(x, y + Math.floor(rnd(71) * 8), 2, 3 + Math.floor(rnd(72) * 5));
+    }
+    if (openRight && rnd(73) > 0.45) {
+      ctx.fillStyle = MOSS_DARK;
+      ctx.fillRect(x + T - 2, y + Math.floor(rnd(74) * 8), 2, 3 + Math.floor(rnd(75) * 5));
+    }
+
+    // С нижней кромки уступов свисает плющ
+    const openBelow = !this.isSolidAt(col, row + 1);
+    if (openBelow && rnd(80) > 0.55) {
+      const vx = x + 2 + Math.floor(rnd(81) * 10);
+      const len = 4 + Math.floor(rnd(82) * 9);
+      ctx.fillStyle = MOSS_DARK;
+      ctx.fillRect(vx, y + T - 1, 1, len);
+      ctx.fillStyle = MOSS;
+      for (let k = 2; k < len; k += 3) ctx.fillRect(vx - 1, y + T - 1 + k, 3, 2);
+    }
+  }
+
+  // Двери в комнаты замка: тяжёлые створки с золотой отделкой.
+  // Над дверью табличка, чтобы было понятно — сюда можно войти
+  drawRoomDoors(ctx, camera, time) {
+    for (const room of this.rooms) {
+      const x = Math.round(room.x - camera.x);
+      if (x < -40 || x > CONFIG.SCREEN_W + 40) continue;
+      const y = Math.round(room.y - camera.y);
+      const w = room.w;
+      const h = room.h;
+
+      // Каменный портал вокруг двери
+      ctx.fillStyle = '#3c424c';
+      ctx.fillRect(x - 5, y - 6, w + 10, h + 6);
+      ctx.fillStyle = '#4b525e';
+      ctx.fillRect(x - 5, y - 6, w + 10, 2);
+      // Арочный верх
+      ctx.fillRect(x - 3, y - 8, w + 6, 2);
+
+      // Створка двери — тёмное дерево с филёнками
+      ctx.fillStyle = '#4a2f1c';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = '#3a2414';
+      ctx.fillRect(x + 1, y + 3, w - 2, 7);
+      ctx.fillRect(x + 1, y + 13, w - 2, 8);
+      // Золотые полосы и ручка
+      ctx.fillStyle = '#c9a227';
+      ctx.fillRect(x, y + 1, w, 1);
+      ctx.fillRect(x, y + 11, w, 1);
+      ctx.fillRect(x + w - 4, y + 13, 2, 2);
+
+      // Тёплый свет, пробивающийся из-под двери
+      const glow = 0.5 + 0.2 * Math.sin(time / 300 + x);
+      ctx.globalAlpha = 0.25 * glow;
+      ctx.fillStyle = '#ffbe55';
+      ctx.fillRect(x - 2, y + h - 2, w + 4, 2);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // Парящие предметы: подсвечник, череп или книга, которые
+  // медленно плавают в воздухе и слабо светятся
+  drawSpooks(ctx, camera, time) {
+    for (const s of this.spooks) {
+      const bx = s.col * CONFIG.TILE;
+      const by = s.row * CONFIG.TILE;
+      const x = Math.round(bx - camera.x);
+      if (x < -20 || x > CONFIG.SCREEN_W + 20) continue;
+      // Плавает по вытянутому кругу
+      const t = time / 1000;
+      const ox = Math.round(Math.sin(t * 0.7 + s.seed) * 5);
+      const oy = Math.round(Math.sin(t * 1.1 + s.seed * 2) * 6);
+      const y = Math.round(by - camera.y) + oy;
+      const вид = s.seed % 3;
+
+      // Холодное свечение вокруг предмета
+      ctx.globalAlpha = 0.1 + 0.05 * Math.sin(t * 3 + s.seed);
+      ctx.fillStyle = '#9fd8e8';
+      ctx.fillRect(x + ox - 5, y - 5, 18, 18);
+      ctx.globalAlpha = 1;
+
+      if (вид === 0) {
+        // Подсвечник с тремя свечами
+        ctx.fillStyle = '#c9a227';
+        ctx.fillRect(x + ox + 1, y + 6, 7, 2);
+        ctx.fillRect(x + ox + 4, y + 3, 1, 4);
+        ctx.fillStyle = '#e8e3d2';
+        ctx.fillRect(x + ox, y + 2, 1, 4);
+        ctx.fillRect(x + ox + 4, y, 1, 4);
+        ctx.fillRect(x + ox + 8, y + 2, 1, 4);
+        ctx.fillStyle = '#ffb02e';
+        const f = Math.sin(t * 9 + s.seed) > 0 ? 1 : 2;
+        ctx.fillRect(x + ox, y + 1 - f, 1, f);
+        ctx.fillRect(x + ox + 4, y - 1 - f, 1, f);
+        ctx.fillRect(x + ox + 8, y + 1 - f, 1, f);
+      } else if (вид === 1) {
+        // Череп с горящими глазницами
+        ctx.fillStyle = '#d8d2c0';
+        ctx.fillRect(x + ox + 1, y, 7, 6);
+        ctx.fillRect(x + ox + 2, y + 6, 5, 2);
+        ctx.fillStyle = '#101018';
+        ctx.fillRect(x + ox + 2, y + 2, 2, 2);
+        ctx.fillRect(x + ox + 5, y + 2, 2, 2);
+        ctx.fillStyle = '#7ec8e8';
+        const g2 = 0.5 + 0.5 * Math.sin(t * 4 + s.seed);
+        ctx.globalAlpha = g2;
+        ctx.fillRect(x + ox + 2, y + 2, 2, 1);
+        ctx.fillRect(x + ox + 5, y + 2, 2, 1);
+        ctx.globalAlpha = 1;
+      } else {
+        // Книга, перелистывающая сама себя
+        ctx.fillStyle = '#6b2222';
+        ctx.fillRect(x + ox, y + 1, 9, 7);
+        ctx.fillStyle = '#e8e3d2';
+        const flip = Math.sin(t * 2.5 + s.seed) > 0 ? 4 : 3;
+        ctx.fillRect(x + ox + 1, y + 2, flip, 5);
+        ctx.fillRect(x + ox + 5, y + 2, 3, 5);
+        ctx.fillStyle = '#c9a227';
+        ctx.fillRect(x + ox + 4, y + 1, 1, 7);
+      }
+    }
+  }
+
+  // Торговец: закутанная фигура у лотка с товаром
+  drawMerchant(ctx, camera, time) {
+    const m = this.merchant;
+    if (!m) return;
+    const x = Math.round(m.x - camera.x);
+    if (x < -40 || x > CONFIG.SCREEN_W + 40) return;
+    const y = Math.round(m.y - camera.y);
+
+    // Фонарь над лотком
+    const flick = 0.75 + 0.25 * Math.sin(time / 130);
+    ctx.globalAlpha = 0.14 * flick;
+    ctx.fillStyle = '#ffbe55';
+    ctx.fillRect(x - 14, y - 12, 48, 44);
+    ctx.globalAlpha = 1;
+
+    // Лоток с товаром
+    ctx.fillStyle = '#5a4028';
+    ctx.fillRect(x - 4, y + 16, 26, 8);
+    ctx.fillStyle = '#3a2818';
+    ctx.fillRect(x - 4, y + 22, 26, 2);
+    // Товар на лотке: склянки и монеты
+    ctx.fillStyle = '#7ec8e8';
+    ctx.fillRect(x - 1, y + 12, 3, 4);
+    ctx.fillStyle = '#d64545';
+    ctx.fillRect(x + 4, y + 12, 3, 4);
+    ctx.fillStyle = '#f2c14e';
+    ctx.fillRect(x + 10, y + 13, 4, 3);
+    ctx.fillRect(x + 16, y + 14, 4, 2);
+
+    // Сам торговец: капюшон, борода, светящиеся глаза
+    ctx.fillStyle = '#3f3357';
+    ctx.fillRect(x + 2, y, 12, 17);     // балахон
+    ctx.fillRect(x + 1, y + 2, 14, 7);  // плечи
+    ctx.fillStyle = '#2e2640';
+    ctx.fillRect(x + 3, y, 10, 5);      // капюшон
+    ctx.fillStyle = '#d8d2c0';
+    ctx.fillRect(x + 5, y + 9, 6, 5);   // борода
+    ctx.fillStyle = '#ffd23f';
+    const blink = Math.sin(time / 400) > -0.8;
+    if (blink) {
+      ctx.fillRect(x + 5, y + 6, 2, 1);
+      ctx.fillRect(x + 9, y + 6, 2, 1);
     }
   }
 

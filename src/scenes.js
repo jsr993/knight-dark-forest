@@ -241,3 +241,61 @@ export function drawQuit(ctx, coins) {
   drawTextCentered(ctx, 'ВВОД - ВЕРНУТЬСЯ В МЕНЮ', W, H - 24, '#4a5568', 1);
   drawFrame(ctx);
 }
+
+// ---------- ЛАВКА ТОРГОВЦА ----------
+// Что продаёт торговец. Цена — в монетах, собранных по всей игре
+export const ТОВАРЫ = [
+  { name: 'СЕРДЦЕ', price: 8, hint: 'ВОССТАНОВИТЬ ОДНО СЕРДЦЕ' },
+  { name: 'ПОЛНОЕ ЛЕЧЕНИЕ', price: 20, hint: 'ВОССТАНОВИТЬ ВСЕ СЕРДЦА' },
+  { name: 'УЙТИ', price: 0, hint: 'ВЕРНУТЬСЯ К ПОХОДУ' },
+];
+
+// Прилавок со списком товара поверх затемнённого зала
+export function drawShop(ctx, shop, coins) {
+  ctx.fillStyle = 'rgba(8, 6, 12, 0.82)';
+  ctx.fillRect(0, 0, W, H);
+
+  const bx = 48;
+  const by = 26;
+  const bw = W - 96;
+  const bh = 126;
+
+  // Свиток с золотой каймой
+  ctx.fillStyle = '#2a2230';
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = '#c9a227';
+  ctx.fillRect(bx, by, bw, 1);
+  ctx.fillRect(bx, by + bh - 1, bw, 1);
+  ctx.fillRect(bx, by, 1, bh);
+  ctx.fillRect(bx + bw - 1, by, 1, bh);
+
+  drawTextCentered(ctx, 'ЛАВКА ТОРГОВЦА', W, by + 8, '#f2c14e', 1);
+  drawTextCentered(ctx, `У ТЕБЯ ЗОЛОТА: ${coins}`, W, by + 22, '#e8f1f5', 1);
+
+  for (let i = 0; i < ТОВАРЫ.length; i++) {
+    const t = ТОВАРЫ[i];
+    const y = by + 44 + i * 18;
+    const активен = i === shop.index;
+    const поКарману = coins >= t.price;
+    const цвет = активен ? '#ffffff' : (поКарману ? '#a9c2d0' : '#5a6270');
+    drawText(ctx, t.name, bx + 22, y, цвет, 1);
+    if (t.price > 0) {
+      drawText(ctx, `${t.price}`, bx + bw - 34, y, поКарману ? '#f2c14e' : '#7d5f2a', 1);
+      ctx.fillStyle = поКарману ? '#f2c14e' : '#7d5f2a';
+      ctx.fillRect(bx + bw - 20, y + 1, 4, 5);
+    }
+    if (активен) {
+      ctx.fillStyle = '#f2c14e';
+      ctx.fillRect(bx + 12, y + 2, 5, 1);
+      ctx.fillRect(bx + 15, y + 1, 1, 3);
+    }
+  }
+
+  // Либо реплика торговца, либо описание товара
+  if (shop.таймерСообщения > 0) {
+    drawTextCentered(ctx, shop.сообщение, W, by + bh - 20, '#f2c14e', 1);
+  } else {
+    drawTextCentered(ctx, ТОВАРЫ[shop.index].hint, W, by + bh - 20, '#6c7a8d', 1);
+  }
+  drawTextCentered(ctx, 'СТРЕЛКИ - ВЫБОР, ВВОД - КУПИТЬ', W, H - 14, '#4a5568', 1);
+}

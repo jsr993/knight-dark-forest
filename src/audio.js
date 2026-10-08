@@ -331,6 +331,31 @@ export const Sfx = {
     noise({ time: 0.3, vol: 0.3, filterFrom: 1600, filterTo: 80 });
     tone({ freq: 90, freqTo: 40, time: 0.3, vol: 0.28, type: 'square' });
   },
+  // ПАРЯЩИЙ ПРЕДМЕТ: тихий потусторонний звон, от которого не по себе
+  spook() {
+    if (!wake() || muted) return;
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(820, t0);
+    osc.frequency.exponentialRampToValueAtTime(470, t0 + 1.1);
+    lfo.type = 'sine';
+    lfo.frequency.value = 6.5;          // дрожащий, «нездешний» тон
+    lfoGain.gain.value = 26;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.08, t0 + 0.25);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.2);
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(t0); lfo.start(t0);
+    osc.stop(t0 + 1.3); lfo.stop(t0 + 1.3);
+  },
+
   // СМЕРТЬ ГЕРОЯ: падающая фраза и глухой удар — ни с чем не спутаешь
   playerDeath() {
     tone({ freq: NOTE.A4, time: 0.14, vol: 0.24, type: 'square' });
