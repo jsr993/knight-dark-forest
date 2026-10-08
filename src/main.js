@@ -25,7 +25,7 @@ import {
 import { drawTextCentered } from './font.js';
 import {
   MAIN_MENU, LEVELS,
-  drawTitle, drawLevelSelect, drawControls, drawSettings, drawQuit,
+  drawTitle, drawLevelSelect, drawControls, drawSettings, drawQuit, drawDeath,
 } from './scenes.js';
 
 const W = CONFIG.SCREEN_W;
@@ -83,6 +83,7 @@ camera.update(player, 1);
 window.__game = {
   player, camera, level, platforms, enemies, ghosts, boss, chests,
   getCoins: () => coins,
+  getState: () => ({ scene, entering, visiting, victory, fadeAlpha }),
   audioState, Sfx,
 };
 
@@ -108,6 +109,8 @@ let entering = null; // null или { phase, timer }
 let fadeAlpha = 0;   // затемнение экрана (0 — нет, 1 — чёрный)
 let victory = false; // уровень пройден — показываем экран победы
 let victoryTimer = 0;
+let dying = false;   // герой погиб — показываем экран смерти
+let dyingTimer = 0;
 let levelTime = 0;   // сколько секунд идёт прохождение
 
 // ---------- ЭКРАНЫ ----------
@@ -202,6 +205,27 @@ function updateEntering(dt) {
       victoryTimer = 0;
       entering = null;
     }
+  }
+}
+
+// Экран смерти: ждём Enter, чтобы вернуться к последнему флагу
+function updateDeath(dt) {
+  dyingTimer += dt;
+  if (Input.wasPressed('back')) {
+    // Насовсем сдаться и уйти в меню
+    dying = false;
+    scene = 'title';
+    menuIndex = 0;
+    Sfx.menuBack();
+    return;
+  }
+  if (dyingTimer > 0.8 && Input.wasPressed('start')) {
+    dying = false;
+    player.respawn();          // встанет у последнего флага, если он был
+    player.hidden = false;
+    player.sitting = false;
+    resetEnemies();            // враги и сундуки — на свои места
+    camera.update(player, 1);
   }
 }
 
@@ -319,6 +343,14 @@ function update(dt) {
     return;
   }
 
+  // Герой погиб — игра стоит, ждём решения игрока
+  if (dying) {
+    updateDeath(dt);
+    if (Input.wasPressed('mute')) toggleMute();
+    Input.endFrame();
+    return;
+  }
+
   // На экране победы игра замирает — ждём Enter
   if (victory) {
     updateVictory(dt);
@@ -358,10 +390,24 @@ function update(dt) {
     }
   }
 
-  // Смерть героя возрождает всех врагов на их местах
-  if (player.justDied) {
-    player.justDied = false;
-    resetEnemies();
+  // Герой погиб — останавливаем игру и показываем экран смерти
+  if (player.dead) {
+    dying = true;
+    dyingTimer = 0;
+    stopMusic();
+    Input.endFrame();
+    return;
+  }
+
+  // Добежал до флага-чекпоинта — отсюда и начнёт после смерти
+  for (const cp of level.checkpoints) {
+    if (cp.taken) continue;
+    if (overlaps(player, cp)) {
+      cp.taken = true;
+      player.checkpointX = cp.x + 2;
+      player.checkpointY = cp.y - 2;
+      Sfx.checkpoint();
+    }
   }
 
   // Дошли до костра — привал начинается ТОЛЬКО если огр повержен.
@@ -470,6 +516,7 @@ function render() {
   background.draw(bctx, camera);
   level.drawDecor(bctx, camera, now); // домики в лесу
   level.draw(bctx, camera);
+  level.drawCheckpoints(bctx, camera, now);
   for (const chest of chests) chest.draw(bctx, camera);
   for (const coin of coins) coin.draw(bctx, camera);
   for (const plat of platforms) plat.draw(bctx, camera);
@@ -488,6 +535,11 @@ function render() {
   }
 
   if (victory) drawVictoryScreen(bctx);
+  if (dying) {
+    bctx.fillStyle = 'rgba(10, 4, 6, 0.78)';
+    bctx.fillRect(0, 0, W, H);
+    drawDeath(bctx, now, player.checkpointX !== undefined);
+  }
 
   blitToScreen();
 }

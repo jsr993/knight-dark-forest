@@ -201,6 +201,27 @@ export function drawSettings(ctx, selected, muted, musicMuted, time) {
   drawFrame(ctx);
 }
 
+// ---------- ЭКРАН СМЕРТИ ----------
+// Показывается, когда кончились сердца или герой упал в пропасть.
+// Главное — чтобы игрок ясно понял: он погиб, и это не мелькнуло мимо.
+export function drawDeath(ctx, time, наЧекпоинте) {
+  // Надпись пульсирует тревожным красным
+  const pulse = 0.75 + 0.25 * Math.sin(time / 260);
+  drawTextCentered(ctx, 'ТЫ ПОГИБ', W, 52, `rgba(214, 40, 40, ${pulse})`, 3);
+
+  drawTextCentered(
+    ctx,
+    наЧекпоинте ? 'ВЕРНЁШЬСЯ К ПОСЛЕДНЕМУ ФЛАГУ' : 'НАЧНЁШЬ СНАЧАЛА',
+    W, 96, '#8d99ae', 1,
+  );
+
+  if (time % 1200 < 800) {
+    drawTextCentered(ctx, 'НАЖМИ ВВОД', W, 128, '#c8d3e0', 1);
+  }
+  drawTextCentered(ctx, 'ESC - В ГЛАВНОЕ МЕНЮ', W, H - 16, '#4a5568', 1);
+  drawFrame(ctx);
+}
+
 // ---------- ПРОЩАНИЕ (пункт «Выход») ----------
 export function drawQuit(ctx, coins) {
   drawTextCentered(ctx, 'СПАСИБО ЗА ИГРУ!', W, 60, '#f2c14e', 2);

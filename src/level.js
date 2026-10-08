@@ -58,6 +58,7 @@ export class Level {
     this.bossSpawn = null;  // точка появления босса
     this.chestSpawns = [];  // сундуки с золотом
     this.doors = [];        // двери домиков, куда можно зайти отдохнуть
+    this.checkpoints = [];  // флаги-чекпоинты: тут герой возрождается после смерти
 
     // Выход с уровня (дверь замка), заполняется меткой 'E'
     this.exit = null;
@@ -102,6 +103,16 @@ export class Level {
         } else if (ch === 'c') {
           // сундук с золотом
           this.chestSpawns.push({ col, row });
+          ch = '.';
+        } else if (ch === 'F') {
+          // Флаг-чекпоинт: добежал до него — отсюда и начнёшь после смерти
+          this.checkpoints.push({
+            x: col * T,
+            y: (row + 1) * T - 22,
+            w: T,
+            h: 22,
+            taken: false,
+          });
           ch = '.';
         } else if (ch === 'D') {
           // Жилой домик, в который можно зайти и отдохнуть (+1 сердце).
@@ -208,6 +219,52 @@ export class Level {
       if (this.isVineAt(col, row)) return true;
     }
     return false;
+  }
+
+  // Флаги-чекпоинты. Пока не добежал — серый и обвисший,
+  // после касания — алый, развевается на ветру
+  drawCheckpoints(ctx, camera, time) {
+    for (const cp of this.checkpoints) {
+      const x = Math.round(cp.x - camera.x);
+      if (x < -20 || x > CONFIG.SCREEN_W + 20) continue;
+      const y = Math.round(cp.y - camera.y);
+
+      // Древко
+      ctx.fillStyle = '#6b6257';
+      ctx.fillRect(x + 3, y, 2, 22);
+      ctx.fillStyle = '#8a8070';
+      ctx.fillRect(x + 3, y, 1, 22);
+      // Основание
+      ctx.fillStyle = '#4a453d';
+      ctx.fillRect(x + 1, y + 20, 7, 2);
+
+      if (cp.taken) {
+        // Полотнище развевается: волна бежит по ткани
+        const wave = Math.sin(time / 160);
+        for (let i = 0; i < 10; i++) {
+          const h = 7 - Math.abs(i - 4) * 0.4;
+          const off = Math.round(Math.sin(time / 160 + i * 0.6) * 1.2);
+          ctx.fillStyle = i < 5 ? '#d62828' : '#a61c1c';
+          ctx.fillRect(x + 5 + i, y + 2 + off, 1, Math.round(h));
+        }
+        // Золотой наконечник
+        ctx.fillStyle = '#f2c14e';
+        ctx.fillRect(x + 3, y - 2, 2, 2);
+        // Лёгкое свечение, что точка активна
+        ctx.globalAlpha = 0.12 + 0.06 * (1 + wave);
+        ctx.fillStyle = '#f2c14e';
+        ctx.fillRect(x - 4, y - 4, 20, 28);
+        ctx.globalAlpha = 1;
+      } else {
+        // Серая тряпка, обвисшая вдоль древка
+        ctx.fillStyle = '#5a5f66';
+        for (let i = 0; i < 6; i++) {
+          ctx.fillRect(x + 5 + i, y + 3 + i * 0.5, 1, 5 - i * 0.5);
+        }
+        ctx.fillStyle = '#4a4e54';
+        ctx.fillRect(x + 3, y - 1, 2, 1);
+      }
+    }
   }
 
   // Лесные домики (рисуются раньше тайлов — земля перекрывает их низ)

@@ -331,6 +331,23 @@ export const Sfx = {
     noise({ time: 0.3, vol: 0.3, filterFrom: 1600, filterTo: 80 });
     tone({ freq: 90, freqTo: 40, time: 0.3, vol: 0.28, type: 'square' });
   },
+  // СМЕРТЬ ГЕРОЯ: падающая фраза и глухой удар — ни с чем не спутаешь
+  playerDeath() {
+    tone({ freq: NOTE.A4, time: 0.14, vol: 0.24, type: 'square' });
+    tone({ freq: NOTE.F4, time: 0.14, vol: 0.24, type: 'square', delay: 0.14 });
+    tone({ freq: NOTE.D4, time: 0.18, vol: 0.24, type: 'square', delay: 0.28 });
+    tone({ freq: NOTE.A3, time: 0.5, vol: 0.26, type: 'square', delay: 0.46 });
+    tone({ freq: NOTE.D3, time: 0.7, vol: 0.2, type: 'triangle', delay: 0.46 });
+    noise({ time: 0.5, vol: 0.18, filterFrom: 700, filterTo: 70, delay: 0.46 });
+  },
+
+  // Флаг чекпоинта загорелся — короткий светлый сигнал
+  checkpoint() {
+    tone({ freq: NOTE.D4, time: 0.09, vol: 0.18 });
+    tone({ freq: NOTE.A4, time: 0.09, vol: 0.18, delay: 0.08 });
+    tone({ freq: NOTE.D5, time: 0.22, vol: 0.18, delay: 0.16 });
+  },
+
   // Переход по пунктам меню — короткий тик
   menuMove() {
     tone({ freq: 620, time: 0.05, vol: 0.14, type: 'square' });

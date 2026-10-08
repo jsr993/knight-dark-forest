@@ -28,9 +28,12 @@ export class Player {
     this.respawn();
   }
 
+  // Возродиться. Если герой добежал до чекпоинта, появляется там,
+  // а не в самом начале уровня
   respawn() {
-    this.x = this.spawnX;
-    this.y = this.spawnY;
+    this.x = this.checkpointX !== undefined ? this.checkpointX : this.spawnX;
+    this.y = this.checkpointY !== undefined ? this.checkpointY : this.spawnY;
+    this.dead = false;
     this.vx = 0;
     this.vy = 0;
     this.onGround = false;
@@ -52,7 +55,7 @@ export class Player {
     this.hidden = false;      // герой не рисуется
     this.sitting = false;     // сидит у костра (сценка привала)
     this.animTime = 0;        // таймер анимации ходьбы
-    // justDied НЕ сбрасываем здесь: его выставляет смерть, а читает main.js
+    // dead сбрасывается выше: герой снова жив
   }
 
   update(dt, level, platforms) {
@@ -199,9 +202,11 @@ export class Player {
     else this.animTime = 0;
 
     // ---------- ПАДЕНИЕ В ПРОПАСТЬ ----------
-    if (this.y > level.pixelH + CONFIG.FALL_DEATH_MARGIN) {
-      this.respawn(); // на этапе 4 здесь появятся жизни и экран смерти
-      this.justDied = true; // main.js увидит это и возродит врагов
+    if (this.y > level.pixelH + CONFIG.FALL_DEATH_MARGIN && !this.dead) {
+      // Падение в пропасть убивает сразу, независимо от сердец
+      this.hearts = 0;
+      this.dead = true;
+      Sfx.playerDeath();
     }
   }
 
@@ -220,8 +225,9 @@ export class Player {
     this.vx = dir * CONFIG.HURT_KNOCKBACK_X;
     this.vy = CONFIG.HURT_KNOCKBACK_Y;
     if (this.hearts <= 0) {
-      this.respawn(); // на этапе 4 здесь будут жизни и экран смерти
-      this.justDied = true; // main.js увидит это и возродит врагов
+      this.hearts = 0;
+      this.dead = true;      // main.js покажет экран смерти
+      Sfx.playerDeath();
     }
   }
 
