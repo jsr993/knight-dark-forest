@@ -53,8 +53,14 @@ function makeCanvas(w, h) {
 }
 
 export class Background {
-  constructor(levelWidth = 4800) {
+  constructor(levelWidth = 4800, theme = 'forest') {
     this.levelWidth = levelWidth;
+    this.theme = theme;
+    if (theme === 'castle') {
+      // В замке другой задник: сумрачные своды и дальние залы
+      this.hall = this.buildCastleHall();
+      return;
+    }
     this.sky = this.buildSky();
     this.far = this.buildFarForest();
     this.near = this.buildBigTrees();
@@ -315,7 +321,74 @@ export class Background {
   }
 
   // ---------- ОТРИСОВКА КАЖДЫЙ КАДР ----------
+  // Задник замка: ряды арок, уходящих в темноту, витражные окна
+  // и колонны — всё в холодном камне
+  buildCastleHall() {
+    const c = makeCanvas(480, LAYER_H);
+    const ctx = c.getContext('2d');
+    const rng = mulberry32(55);
+
+    // Общий сумрак зала
+    ctx.fillStyle = '#1a1d24';
+    ctx.fillRect(0, 0, 480, LAYER_H);
+    ctx.fillStyle = '#20242d';
+    ctx.fillRect(0, 70, 480, LAYER_H - 70);
+
+    // Дальняя стена с кладкой
+    ctx.fillStyle = '#262b34';
+    for (let y = 60; y < LAYER_H; y += 12) {
+      for (let x = (y / 12) % 2 ? 0 : -12; x < 480; x += 24) {
+        ctx.fillRect(x, y, 23, 11);
+      }
+    }
+
+    // Ряд арок, уходящих вглубь
+    for (let i = 0; i < 5; i++) {
+      const ax = 20 + i * 96;
+      const aw = 44;
+      const top = 54;
+      // Тёмный проём
+      ctx.fillStyle = '#10131a';
+      ctx.fillRect(ax, top + 14, aw, 120);
+      // Полукруглый свод, выложенный ступеньками
+      for (let s = 0; s < 8; s++) {
+        const inset = Math.round(aw / 2 - Math.sqrt((aw / 2) ** 2 - (s * 2.6) ** 2 || 0));
+        ctx.fillRect(ax + inset, top + 14 - s * 2, aw - inset * 2, 2);
+      }
+      // Витраж в глубине арки — единственный цвет в сумраке
+      if (rng() > 0.4) {
+        const colors = ['#2f4f6b', '#4a3357', '#51432a'];
+        ctx.fillStyle = colors[Math.floor(rng() * colors.length)];
+        ctx.globalAlpha = 0.5;
+        ctx.fillRect(ax + 12, top + 26, aw - 24, 34);
+        ctx.globalAlpha = 1;
+      }
+      // Колонна между арками
+      ctx.fillStyle = '#2b313b';
+      ctx.fillRect(ax + aw + 14, top, 18, LAYER_H - top);
+      ctx.fillStyle = '#343b47';
+      ctx.fillRect(ax + aw + 14, top, 3, LAYER_H - top);
+      // Капитель
+      ctx.fillStyle = '#343b47';
+      ctx.fillRect(ax + aw + 11, top - 6, 24, 6);
+    }
+
+    // Свисающая паутина по углам сводов
+    ctx.fillStyle = '#2f343d';
+    for (let i = 0; i < 10; i++) {
+      const wx = Math.floor(rng() * 480);
+      const wy = 40 + Math.floor(rng() * 30);
+      for (let k = 0; k < 6; k++) ctx.fillRect(wx + k, wy + k, 1, 1);
+    }
+
+    return c;
+  }
+
   draw(ctx, camera) {
+    if (this.theme === 'castle') {
+      this.drawWrapped(ctx, this.hall, camera.x * 0.25, camera.y * 0.2);
+      return;
+    }
     // Небо почти не двигается (лёгкий сдвиг вверх при подъёме камеры)
     ctx.drawImage(this.sky, 0, Math.round(-camera.y * 0.08));
     this.drawCastle(ctx, camera);

@@ -13,12 +13,21 @@ const H = CONFIG.SCREEN_H;
 // Пункты главного меню
 export const MAIN_MENU = ['ИГРАТЬ', 'ВЫБОР УРОВНЯ', 'УПРАВЛЕНИЕ', 'ПАРАМЕТРЫ', 'ВЫХОД'];
 
-// Уровни: пока сделан только первый, остальные закрыты
+// Уровни игры. Открываются по мере прохождения: пройдёшь первый —
+// откроется второй. Третий ещё не сделан
 export const LEVELS = [
-  { name: 'ЛЕС И КОСТЁР', unlocked: true },
+  { name: 'ТЁМНЫЙ ЛЕС', unlocked: true },
   { name: 'ЗАМОК', unlocked: false },
-  { name: 'ПОДЗЕМЕЛЬЕ', unlocked: false },
+  { name: 'ПОДЗЕМЕЛЬЕ', unlocked: false, скоро: true },
 ];
+
+// Сколько уровней открыто (1 — только первый)
+export function unlockLevels(count) {
+  for (let i = 0; i < LEVELS.length; i++) {
+    if (LEVELS[i].скоро) continue;      // ещё не сделанные не открываем
+    LEVELS[i].unlocked = i < count;
+  }
+}
 
 // Рамка вокруг экрана — как на старых консолях
 function drawFrame(ctx) {

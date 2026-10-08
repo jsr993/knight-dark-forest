@@ -10,6 +10,7 @@ import { CONFIG } from './config.js';
 import { Input } from './input.js';
 import { Level } from './level.js';
 import { LEVEL1 } from './levels/level1.js';
+import { LEVEL2 } from './levels/level2.js';
 import { Player } from './entities/player.js';
 import { Enemy, Ghost, Zombie } from './entities/enemies.js';
 import { Boss } from './entities/boss.js';
@@ -24,7 +25,7 @@ import {
 } from './audio.js';
 import { drawTextCentered } from './font.js';
 import {
-  MAIN_MENU, LEVELS,
+  MAIN_MENU, LEVELS, unlockLevels,
   drawTitle, drawLevelSelect, drawControls, drawSettings, drawQuit, drawDeath,
 } from './scenes.js';
 
@@ -52,38 +53,79 @@ resize();
 // --- Создаём мир ---
 // Звук включается при первом нажатии клавиши: так требует браузер
 Input.init(initAudio);
-const level = new Level(LEVEL1);
-const player = new Player(level.spawnX, level.spawnY);
-// Движущиеся платформы из меток 'm' и 'M' на карте
-const platforms = level.platformSpawns.map((s) => new MovingPlatform(s.col, s.row, s.axis));
-// Враги: 'g' — тёмные рыцари, 'z' — зомби
-const enemies = level.enemySpawns.map((s) => {
-  const x = s.col * CONFIG.TILE + 2;
-  const y = s.row * CONFIG.TILE + CONFIG.TILE - 20;
-  return s.kind === 'zombie' ? new Zombie(x, y) : new Enemy(x, y);
-});
-// Привидения из меток 'G' (снизу) и 'V' (сверху)
-const ghosts = level.ghostSpawns.map((s) => new Ghost(s.col, s.row, s.fromBelow));
-// Босс из метки 'B'
-const boss = level.bossSpawn
-  ? new Boss(
-      level.bossSpawn.col * CONFIG.TILE,
-      (level.bossSpawn.row + 1) * CONFIG.TILE - CONFIG.BOSS_H,
-    )
-  : null;
-// Сундуки из меток 'c' и монеты, которые из них выбиваются
-const chests = level.chestSpawns.map((s) => new Chest(s.col, s.row));
+
+// Все уровни игры по порядку
+const LEVEL_MAPS = [LEVEL1, LEVEL2];
+
+// Мир собирается из карты заново каждый раз, когда начинается уровень.
+// Поэтому все его части живут в объекте world, а не в отдельных константах.
+let levelIndex = 0;
+let level;
+let player;
+let platforms;
+let enemies;
+let ghosts;
+let boss;
+let chests;
 let coins = [];
-const camera = new Camera(level);
-const background = new Background(level.pixelW);
-// Камера сразу смотрит на героя, без "подъезда" в первый кадр
-camera.update(player, 1);
+let camera;
+let background;
+
+// Собрать мир по карте уровня с номером n
+function buildWorld(n) {
+  levelIndex = n;
+  level = new Level(LEVEL_MAPS[n], n === 0 ? 'forest' : 'castle');
+
+  // Герой создаётся один раз за игру: он несёт с собой собранное золото
+  if (!player) player = new Player(level.spawnX, level.spawnY);
+  player.spawnX = level.spawnX;
+  player.spawnY = level.spawnY;
+  player.checkpointX = undefined; // чекпоинты нового уровня ещё не взяты
+  player.checkpointY = undefined;
+  player.respawn();
+
+  // Движущиеся платформы из меток 'm' и 'M'
+  platforms = level.platformSpawns.map((s) => new MovingPlatform(s.col, s.row, s.axis));
+  // Враги: 'g' — тёмные рыцари, 'z' — зомби
+  enemies = level.enemySpawns.map((s) => {
+    const x = s.col * CONFIG.TILE + 2;
+    const y = s.row * CONFIG.TILE + CONFIG.TILE - 20;
+    return s.kind === 'zombie' ? new Zombie(x, y) : new Enemy(x, y);
+  });
+  // Привидения из меток 'G' (снизу) и 'V' (сверху)
+  ghosts = level.ghostSpawns.map((s) => new Ghost(s.col, s.row, s.fromBelow));
+  // Босс из метки 'B'
+  boss = level.bossSpawn
+    ? new Boss(
+        level.bossSpawn.col * CONFIG.TILE,
+        (level.bossSpawn.row + 1) * CONFIG.TILE - CONFIG.BOSS_H,
+      )
+    : null;
+  // Сундуки из меток 'c' и монеты, которые из них выбиваются
+  chests = level.chestSpawns.map((s) => new Chest(s.col, s.row));
+  coins = [];
+
+  camera = new Camera(level);
+  background = new Background(level.pixelW, level.theme);
+  // Камера сразу смотрит на героя, без "подъезда" в первый кадр
+  camera.update(player, 1);
+}
+
+buildWorld(0);
 
 // Доступ к состоянию игры из консоли браузера (для отладки)
 window.__game = {
-  player, camera, level, platforms, enemies, ghosts, boss, chests,
+  get player() { return player; },
+  get camera() { return camera; },
+  get level() { return level; },
+  get platforms() { return platforms; },
+  get enemies() { return enemies; },
+  get ghosts() { return ghosts; },
+  get boss() { return boss; },
+  get chests() { return chests; },
   getCoins: () => coins,
-  getState: () => ({ scene, entering, visiting, victory, fadeAlpha }),
+  getState: () => ({ scene, levelIndex, entering, visiting, victory, dying, fadeAlpha }),
+  startLevel: (n) => startLevel(n),   // для ручной проверки из консоли
   audioState, Sfx,
 };
 
@@ -119,20 +161,35 @@ let levelTime = 0;   // сколько секунд идёт прохожден�
 let scene = 'title';
 let menuIndex = 0;
 
+// ---------- ПРОГРЕСС ----------
+// Сколько уровней открыто. Запоминается в браузере, чтобы прогресс
+// не пропадал между заходами в игру
+const PROGRESS_KEY = 'knight-progress';
+let unlocked = 1;
+try {
+  const saved = Number(localStorage.getItem(PROGRESS_KEY));
+  if (saved >= 1 && saved <= LEVEL_MAPS.length) unlocked = saved;
+} catch (e) { /* localStorage может быть недоступен — играем с начала */ }
+unlockLevels(unlocked);
+
+function saveProgress(count) {
+  unlocked = Math.max(unlocked, count);
+  unlockLevels(unlocked);
+  try { localStorage.setItem(PROGRESS_KEY, String(unlocked)); } catch (e) { /* не страшно */ }
+}
+
 // Начать уровень заново с чистого листа
-function startLevel() {
+function startLevel(n = 0) {
   fadeAlpha = 0;
   victory = false;
+  dying = false;
   levelTime = 0;
   player.coins = 0;
-  player.respawn();
-  player.hidden = false;
-  player.sitting = false;
   entering = null;
   visiting = null;
-  resetEnemies();
-  for (const door of level.doors) door.used = false;
-  camera.update(player, 1);
+  buildWorld(n);          // собираем уровень заново: карта, враги, сундуки
+  player.hidden = false;
+  player.sitting = false;
   scene = 'game';
 }
 
@@ -204,6 +261,7 @@ function updateEntering(dt) {
       victory = true;
       victoryTimer = 0;
       entering = null;
+      saveProgress(levelIndex + 2); // пройден уровень — открылся следующий
     }
   }
 }
@@ -233,15 +291,22 @@ function updateDeath(dt) {
 function updateVictory(dt) {
   victoryTimer += dt;
   if (victoryTimer > 1.2 && Input.wasPressed('start')) {
+    const следующий = levelIndex + 1;
+    if (следующий < LEVEL_MAPS.length) {
+      startLevel(следующий);   // впереди ещё один уровень
+    } else {
+      // Игра пройдена целиком — возвращаемся в меню
+      victory = false;
+      fadeAlpha = 0;
+      scene = 'title';
+      menuIndex = 0;
+    }
+  }
+  if (Input.wasPressed('back')) {
     victory = false;
     fadeAlpha = 0;
-    levelTime = 0;
-    player.coins = 0;
-    player.respawn();
-    player.hidden = false;
-    player.sitting = false;
-    resetEnemies();
-    camera.update(player, 1);
+    scene = 'title';
+    menuIndex = 0;
   }
 }
 
@@ -308,7 +373,7 @@ function updateMenu() {
     if (enter || back) { Sfx.menuBack(); scene = 'title'; menuIndex = 2; }
   } else if (scene === 'levels') {
     if (enter) {
-      if (LEVELS[menuIndex].unlocked) { Sfx.menuSelect(); startLevel(); }
+      if (LEVELS[menuIndex].unlocked) { Sfx.menuSelect(); startLevel(menuIndex); }
       else Sfx.menuLocked(); // уровень ещё не открыт
     }
     if (back) { Sfx.menuBack(); scene = 'title'; menuIndex = 1; }
@@ -462,9 +527,15 @@ function drawVictoryScreen(ctx) {
   const shine = 0.7 + 0.3 * Math.sin(victoryTimer * 3);
   const gold = `rgba(255, 214, 92, ${shine})`;
 
-  drawTextCentered(ctx, 'ПОБЕДА!', W, 38, gold, 3);
-  drawTextCentered(ctx, 'ТЫ ПОБЕДИТЕЛЬ', W, 72, '#e8f1f5', 1);
-  drawTextCentered(ctx, 'ОГР ПОВЕРЖЕН', W, 86, '#a9c2d0', 1);
+  const последний = levelIndex + 1 >= LEVEL_MAPS.length;
+
+  drawTextCentered(ctx, последний ? 'ИГРА ПРОЙДЕНА!' : 'УРОВЕНЬ ПРОЙДЕН!', W, 38, gold, 2);
+  drawTextCentered(ctx, 'ТЫ ПОБЕДИТЕЛЬ', W, 66, '#e8f1f5', 1);
+  drawTextCentered(
+    ctx,
+    последний ? 'ЗАМОК ОСВОБОЖДЁН' : 'ОГР ПОВЕРЖЕН, ВПЕРЕДИ ЗАМОК',
+    W, 84, '#a9c2d0', 1,
+  );
 
   // Итоги: собранное золото и время прохождения
   const minutes = Math.floor(levelTime / 60);
@@ -475,7 +546,11 @@ function drawVictoryScreen(ctx) {
 
   // Подсказка появляется чуть позже и мигает
   if (victoryTimer > 1.2 && Math.floor(victoryTimer * 2) % 2 === 0) {
-    drawTextCentered(ctx, 'НАЖМИ ВВОД - ИГРАТЬ СНОВА', W, 152, '#8d99ae', 1);
+    drawTextCentered(
+      ctx,
+      последний ? 'НАЖМИ ВВОД - В ГЛАВНОЕ МЕНЮ' : 'НАЖМИ ВВОД - СЛЕДУЮЩИЙ УРОВЕНЬ',
+      W, 152, '#8d99ae', 1,
+    );
   }
 }
 
@@ -516,6 +591,7 @@ function render() {
   background.draw(bctx, camera);
   level.drawDecor(bctx, camera, now); // домики в лесу
   level.draw(bctx, camera);
+  level.drawTorches(bctx, camera, now);
   level.drawCheckpoints(bctx, camera, now);
   for (const chest of chests) chest.draw(bctx, camera);
   for (const coin of coins) coin.draw(bctx, camera);

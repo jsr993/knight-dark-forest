@@ -38,7 +38,10 @@ const COL_VINE = '#2d6a4f';        // стебель лианы
 const COL_VINE_LEAF = '#52b788';   // листья лианы
 
 export class Level {
-  constructor(rows) {
+  // theme: 'forest' — лесной уровень с землёй и травой,
+  //        'castle' — каменные залы замка
+  constructor(rows, theme = 'forest') {
+    this.theme = theme;
     // Выравниваем строки по самой длинной (короткие дополняем пустотой)
     const width = Math.max(...rows.map((r) => r.length));
     this.cols = width;
@@ -59,6 +62,7 @@ export class Level {
     this.chestSpawns = [];  // сундуки с золотом
     this.doors = [];        // двери домиков, куда можно зайти отдохнуть
     this.checkpoints = [];  // флаги-чекпоинты: тут герой возрождается после смерти
+    this.torches = [];      // настенные факелы (освещают залы замка)
 
     // Выход с уровня (дверь замка), заполняется меткой 'E'
     this.exit = null;
@@ -103,6 +107,10 @@ export class Level {
         } else if (ch === 'c') {
           // сундук с золотом
           this.chestSpawns.push({ col, row });
+          ch = '.';
+        } else if (ch === 'T') {
+          // Факел на стене: горит и освещает зал
+          this.torches.push({ x: col * T + 5, y: row * T + 2, seed: col * 7 });
           ch = '.';
         } else if (ch === 'F') {
           // Флаг-чекпоинт: добежал до него — отсюда и начнёшь после смерти
@@ -219,6 +227,94 @@ export class Level {
       if (this.isVineAt(col, row)) return true;
     }
     return false;
+  }
+
+  // Каменная кладка замка: крупные блоки со швами, местами выщербленные,
+  // кое-где пророс мох — замок старый
+  drawStoneTile(ctx, x, y, col, row, rnd) {
+    const openAbove = !this.isSolidAt(col, row - 1);
+    const T = CONFIG.TILE;
+
+    const BLOCK = '#4d5159';
+    const BLOCK_ALT = '#565b64';
+    const SEAM = '#33363c';
+    const LIGHT = '#656a74';
+    const MOSS = '#3f5c3a';
+
+    // Блоки кладки чередуются в шахматном порядке
+    ctx.fillStyle = (col + row) % 2 === 0 ? BLOCK : BLOCK_ALT;
+    ctx.fillRect(x, y, T, T);
+
+    // Швы между блоками
+    ctx.fillStyle = SEAM;
+    ctx.fillRect(x, y + T - 1, T, 1);
+    ctx.fillRect(x + T - 1, y, 1, T);
+    // Половинный шов — кладка «вразбежку»
+    const half = (row % 2 === 0) ? 0 : 8;
+    ctx.fillRect(x + half, y, 1, T);
+
+    // Блик на верхней грани блока
+    ctx.fillStyle = LIGHT;
+    ctx.fillRect(x, y, T - 1, 1);
+
+    // Выщербины и трещины
+    if (rnd(11) > 0.72) {
+      ctx.fillStyle = SEAM;
+      const dx = 2 + Math.floor(rnd(12) * 10);
+      const dy = 3 + Math.floor(rnd(13) * 9);
+      ctx.fillRect(x + dx, y + dy, 2, 2);
+    }
+    if (rnd(14) > 0.88) {
+      ctx.fillStyle = SEAM;
+      const dy = 4 + Math.floor(rnd(15) * 7);
+      ctx.fillRect(x + 3, y + dy, 9, 1);
+    }
+
+    // Верхняя кромка пола: мох вместо травы
+    if (openAbove) {
+      ctx.fillStyle = LIGHT;
+      ctx.fillRect(x, y, T, 2);
+      ctx.fillStyle = MOSS;
+      for (let i = 0; i < T; i += 3) {
+        if (rnd(20 + i) > 0.45) ctx.fillRect(x + i, y, 2, 1 + Math.round(rnd(30 + i) * 2));
+      }
+    }
+  }
+
+  // Настенные факелы: кованый держатель и живое пламя,
+  // от которого по стене расходится тёплое пятно света
+  drawTorches(ctx, camera, time) {
+    for (const t of this.torches) {
+      const x = Math.round(t.x - camera.x);
+      if (x < -24 || x > CONFIG.SCREEN_W + 24) continue;
+      const y = Math.round(t.y - camera.y);
+      const flick = 0.72 + 0.28 * Math.sin(time / 110 + t.seed);
+
+      // Пятно света на стене
+      ctx.globalAlpha = 0.1 * flick;
+      ctx.fillStyle = '#ffbe55';
+      for (let i = 3; i >= 1; i--) {
+        const r = i * 9;
+        ctx.fillRect(x + 2 - r, y + 4 - r, r * 2, r * 2);
+      }
+      ctx.globalAlpha = 1;
+
+      // Кронштейн и рукоять факела
+      ctx.fillStyle = '#3a3f47';
+      ctx.fillRect(x, y + 6, 5, 2);
+      ctx.fillStyle = '#5a4028';
+      ctx.fillRect(x + 1, y + 3, 3, 4);
+
+      // Пламя: три языка, каждый дышит по-своему
+      const h1 = 4 + Math.round(Math.sin(time / 90 + t.seed) * 2);
+      const h2 = 6 + Math.round(Math.sin(time / 70 + t.seed * 2) * 2);
+      ctx.fillStyle = '#ff7a2e';
+      ctx.fillRect(x + 1, y + 2 - h1, 3, h1 + 2);
+      ctx.fillStyle = '#ffb02e';
+      ctx.fillRect(x + 2, y + 1 - h2, 1, h2 + 2);
+      ctx.fillStyle = '#ffe9a0';
+      ctx.fillRect(x + 2, y, 1, 2);
+    }
   }
 
   // Флаги-чекпоинты. Пока не добежал — серый и обвисший,
@@ -388,6 +484,12 @@ export class Level {
       const n = Math.sin(col * 12.9898 + row * 78.233 + salt * 37.719) * 43758.5453;
       return n - Math.floor(n);
     };
+
+    // В замке вместо земли — каменная кладка
+    if (this.theme === 'castle') {
+      this.drawStoneTile(ctx, x, y, col, row, rnd);
+      return;
+    }
 
     const openAbove = !this.isSolidAt(col, row - 1);   // сверху воздух — там трава
     const openLeft = !this.isSolidAt(col - 1, row);
